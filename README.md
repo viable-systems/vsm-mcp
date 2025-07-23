@@ -1,0 +1,149 @@
+# VSM-MCP: Viable System Model with Model Context Protocol
+
+An autonomous cybernetic system implementing Stafford Beer's Viable System Model (VSM) with dynamic capability acquisition through the Model Context Protocol (MCP).
+
+## 🎯 Overview
+
+VSM-MCP is a genuine autonomous system that:
+- Implements all 5 VSM systems (Operations, Coordination, Control, Intelligence, Policy)
+- Calculates variety gaps using Ashby's Law of Requisite Variety
+- Autonomously discovers and integrates MCP servers to fill capability gaps
+- Features meta-cognitive consciousness for self-awareness and learning
+- Provides full MCP protocol support for AI integration
+
+## 🏗️ Architecture
+
+```
+System 5 (Policy) ← Consciousness Interface
+    ↓
+System 4 (Intelligence) ← MCP Discovery
+    ↓
+System 3 (Control) ← Pattern Engine
+    ↓
+System 2 (Coordination) ← Event Bus
+    ↓
+System 1 (Operations) ← Dynamic Capabilities
+```
+
+## 🚀 Quick Start
+
+```bash
+# Clone the repository
+git clone https://github.com/viable-systems/vsm-mcp.git
+cd vsm-mcp
+
+# Install dependencies
+mix deps.get
+
+# Start the autonomous system
+./start_autonomous.sh demo
+
+# Or start with MCP server
+./start_autonomous.sh mcp
+```
+
+## 🧠 Key Features
+
+### Autonomous Variety Management
+- Real-time calculation of operational vs environmental variety
+- Automatic detection of variety gaps
+- Dynamic acquisition of capabilities through MCP servers
+
+### Consciousness Interface
+- Meta-cognitive reflection and self-awareness
+- Decision tracing and rationale storage
+- Learning from past experiences
+- Understanding of system limitations
+
+### MCP Integration
+- Full protocol support (stdio, TCP, WebSocket)
+- Client for connecting to external MCP servers
+- Server for exposing VSM capabilities to AI
+- Dynamic capability integration
+
+### VSM Implementation
+- **System 1**: Operational units with dynamic capabilities
+- **System 2**: Coordination and conflict resolution
+- **System 3**: Control, audit, and optimization
+- **System 4**: Environmental scanning and adaptation
+- **System 5**: Policy, identity, and strategic decisions
+
+## 📡 MCP Tools Available
+
+When running as an MCP server, the following tools are exposed:
+
+- `vsm_status` - Get current system status
+- `vsm_decision` - Make strategic decisions
+- `variety_analysis` - Analyze variety gaps
+- `capability_search` - Find MCP servers for gaps
+- `system_metrics` - Get performance metrics
+- `consciousness_query` - Query meta-cognitive state
+- `event_publish` - Publish system events
+- `pattern_analyze` - Analyze system patterns
+
+## 🔧 Configuration
+
+```elixir
+# config/config.exs
+config :vsm_mcp,
+  # Variety monitoring interval (ms)
+  variety_check_interval: 60_000,
+  
+  # MCP server configuration
+  mcp_server: [
+    transport: :stdio,  # or :tcp, :websocket
+    port: 4000,
+    capabilities: ["vsm", "cybernetics", "autonomy"]
+  ],
+  
+  # Consciousness settings
+  consciousness: [
+    reflection_interval: 300_000,
+    learning_rate: 0.1
+  ]
+```
+
+## 📚 Documentation
+
+- [Architecture Guide](docs/ARCHITECTURE.md)
+- [VSM Principles](docs/VSM_PRINCIPLES.md)
+- [MCP Integration](docs/MCP_INTEGRATION.md)
+- [API Reference](docs/API.md)
+
+## 🧪 Testing
+
+```bash
+# Run all tests
+mix test
+
+# Run specific test
+mix test test/vsm_mcp/variety_test.exs
+
+# Run integration tests
+mix test --only integration
+```
+
+## 🤝 Contributing
+
+1. Fork the repository
+2. Create your feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit your changes (`git commit -m 'Add amazing feature'`)
+4. Push to the branch (`git push origin feature/amazing-feature`)
+5. Open a Pull Request
+
+## 📖 References
+
+- Stafford Beer's "Brain of the Firm" and "Heart of Enterprise"
+- W. Ross Ashby's "Design for a Brain" and "Introduction to Cybernetics"
+- Model Context Protocol Specification
+
+## 📄 License
+
+MIT License - see [LICENSE](LICENSE) file for details.
+
+## 🙏 Acknowledgments
+
+- Stafford Beer for the Viable System Model
+- W. Ross Ashby for the Law of Requisite Variety
+- Anthropic for the Model Context Protocol
+- The Elixir community for excellent tools and libraries
