@@ -27,9 +27,9 @@ defmodule VsmMcp.Application do
       VsmMcp.Systems.System1,  # Operations
       
       # Supporting components
-      VsmMcp.Variety.Analyst,
-      VsmMcp.Consciousness.Interface,
-      VsmMcp.Integration.Supervisor,
+      # VsmMcp.Variety.Analyst,
+      VsmMcp.ConsciousnessInterface,
+      # VsmMcp.Integration.Supervisor,
       
       # Optional MCP server
       maybe_mcp_server()
