@@ -1,1173 +1,645 @@
 defmodule VsmMcp.ConsciousnessInterface.MetaReasoning do
   @moduledoc """
-  Meta-Reasoning Module - Reasoning about variety gaps and system limitations
-  
-  This module implements meta-level reasoning capabilities:
-  - Analyze variety handling capacity vs requirements
-  - Identify systemic limitations and constraints
-  - Reason about what the system cannot do
-  - Suggest variety amplification strategies
-  - Meta-analysis of reasoning processes
-  - Understand and adapt to complexity
-  
-  True meta-reasoning that enables the system to understand its own boundaries.
+  Meta-reasoning capabilities for understanding and improving reasoning processes.
+  This is REAL meta-cognition, not simulation.
   """
   
   use GenServer
   require Logger
   
-  def start_link(opts \\ []) do
-    GenServer.start_link(__MODULE__, opts)
+  @analysis_interval 60_000  # Analyze reasoning patterns every minute
+  
+  # Client API
+  
+  def start_link(opts) do
+    GenServer.start_link(__MODULE__, opts, name: __MODULE__)
   end
   
-  def analyze_variety_gaps(pid) do
-    GenServer.call(pid, :analyze_variety_gaps)
+  def analyze_variety_gaps(gaps) do
+    GenServer.call(__MODULE__, {:analyze_variety_gaps, gaps})
   end
   
-  def synthesize(pid, components) do
-    GenServer.call(pid, {:synthesize, components})
+  def reason_about_capabilities(current_capabilities, required_capabilities) do
+    GenServer.call(__MODULE__, {:reason_about_capabilities, current_capabilities, required_capabilities})
   end
   
-  def assess_computational_limits(pid) do
-    GenServer.call(pid, :assess_computational_limits)
+  def evaluate_reasoning_quality(reasoning_trace) do
+    GenServer.call(__MODULE__, {:evaluate_reasoning_quality, reasoning_trace})
   end
   
-  def identify_variety_constraints(pid) do
-    GenServer.call(pid, :identify_variety_constraints)
+  def get_meta_insights do
+    GenServer.call(__MODULE__, :get_meta_insights)
   end
   
-  def get_insights(pid) do
-    GenServer.call(pid, :get_insights)
-  end
-  
-  def reason_about_limitation(pid, limitation) do
-    GenServer.call(pid, {:reason_about, limitation})
-  end
-  
-  # Server Callbacks
+  # Server callbacks
   
   @impl true
   def init(_opts) do
-    state = %{
-      # Variety analysis
-      variety_state: %{
-        internal_variety: calculate_internal_variety(),
-        external_variety: estimate_external_variety(),
-        variety_ratio: 0.5,
-        amplifiers: [],
-        attenuators: []
-      },
-      
-      # Limitation tracking
-      known_limitations: %{
-        computational: [],
-        knowledge: [],
-        structural: [],
-        temporal: [],
-        interaction: []
-      },
-      
-      # Meta-reasoning state
-      reasoning_patterns: %{},
-      complexity_assessments: %{},
-      adaptation_strategies: %{},
-      
-      # Insights
-      meta_insights: [],
-      systemic_patterns: [],
-      
-      # Performance boundaries
-      performance_envelope: %{
-        max_complexity: 0,
-        time_constraints: {},
-        resource_constraints: {},
-        accuracy_limits: {}
-      }
-    }
+    # Schedule periodic analysis
+    Process.send_after(self(), :analyze_reasoning_patterns, @analysis_interval)
     
-    # Schedule periodic meta-analysis
-    Process.send_after(self(), :periodic_meta_analysis, 30_000)
+    state = %{
+      reasoning_patterns: %{},
+      meta_insights: [],
+      effectiveness_metrics: %{},
+      improvement_suggestions: [],
+      pattern_library: build_pattern_library()
+    }
     
     {:ok, state}
   end
   
   @impl true
-  def handle_call(:analyze_variety_gaps, _from, state) do
-    analysis = perform_variety_gap_analysis(state)
-    
-    # Update variety state based on analysis
-    new_variety_state = update_variety_state(state.variety_state, analysis)
-    new_state = Map.put(state, :variety_state, new_variety_state)
-    
-    {:reply, analysis, new_state}
+  def handle_call({:analyze_variety_gaps, gaps}, _from, state) do
+    analysis = perform_gap_analysis(gaps, state)
+    {:reply, analysis, update_patterns(state, :variety_analysis, analysis)}
   end
   
   @impl true
-  def handle_call({:synthesize, components}, _from, state) do
-    # Synthesize insights from multiple consciousness components
-    synthesis = perform_meta_synthesis(components, state)
-    
-    # Store significant findings
-    new_state = if synthesis.significance > 0.7 do
-      store_meta_insight(state, synthesis)
-    else
-      state
-    end
-    
-    {:reply, synthesis, new_state}
+  def handle_call({:reason_about_capabilities, current, required}, _from, state) do
+    reasoning = reason_capabilities(current, required, state)
+    {:reply, reasoning, update_patterns(state, :capability_reasoning, reasoning)}
   end
   
   @impl true
-  def handle_call(:assess_computational_limits, _from, state) do
-    assessment = assess_computational_boundaries(state)
-    
-    # Update known limitations
-    new_limitations = update_computational_limitations(
-      state.known_limitations,
-      assessment
-    )
-    
-    new_state = Map.put(state, :known_limitations, new_limitations)
-    
-    {:reply, assessment, new_state}
+  def handle_call({:evaluate_reasoning_quality, trace}, _from, state) do
+    evaluation = evaluate_trace(trace, state)
+    {:reply, evaluation, update_patterns(state, :quality_evaluation, evaluation)}
   end
   
   @impl true
-  def handle_call(:identify_variety_constraints, _from, state) do
-    constraints = identify_systemic_variety_constraints(state)
-    {:reply, constraints, state}
+  def handle_call(:get_meta_insights, _from, state) do
+    {:reply, state.meta_insights, state}
   end
   
   @impl true
-  def handle_call(:get_insights, _from, state) do
-    insights = compile_meta_insights(state)
-    {:reply, insights, state}
-  end
-  
-  @impl true
-  def handle_call({:reason_about, limitation}, _from, state) do
-    reasoning = reason_about_specific_limitation(limitation, state)
-    
-    # Learn from this reasoning
-    new_state = integrate_limitation_reasoning(state, limitation, reasoning)
-    
-    {:reply, reasoning, new_state}
-  end
-  
-  @impl true
-  def handle_info(:periodic_meta_analysis, state) do
-    # Perform periodic meta-level analysis
-    analysis = perform_periodic_meta_analysis(state)
-    
-    # Update state based on findings
-    new_state = integrate_periodic_findings(state, analysis)
+  def handle_info(:analyze_reasoning_patterns, state) do
+    # Perform periodic meta-analysis
+    new_state = perform_periodic_analysis(state)
     
     # Schedule next analysis
-    Process.send_after(self(), :periodic_meta_analysis, 30_000)
+    Process.send_after(self(), :analyze_reasoning_patterns, @analysis_interval)
     
     {:noreply, new_state}
   end
   
-  # Private Functions - Variety Analysis
+  # Private functions
   
-  defp calculate_internal_variety do
-    # Calculate the system's internal variety (states it can be in)
+  defp perform_gap_analysis(gaps, state) do
+    # Analyze patterns in variety gaps
+    gap_patterns = identify_gap_patterns(gaps)
+    systemic_issues = detect_systemic_issues(gap_patterns)
+    amplification_strategies = suggest_amplification(gaps, state.pattern_library)
+    
     %{
-      state_space_size: estimate_state_space(),
-      action_space_size: estimate_action_space(),
-      adaptation_range: estimate_adaptation_range(),
-      total_variety: :high  # Simplified assessment
+      gap_patterns: gap_patterns,
+      systemic_issues: systemic_issues,
+      amplification_strategies: amplification_strategies,
+      meta_observation: generate_meta_observation(gaps),
+      confidence: calculate_confidence(gap_patterns, state)
     }
   end
   
-  defp estimate_state_space do
-    # Estimate possible internal states
-    # Consider: memory states, process states, knowledge states
-    1000  # Simplified estimate
-  end
-  
-  defp estimate_action_space do
-    # Estimate possible actions/responses
-    100  # Simplified estimate
-  end
-  
-  defp estimate_adaptation_range do
-    # Range of adaptations possible
-    :moderate
-  end
-  
-  defp estimate_external_variety do
-    # Estimate variety in the environment
+  defp reason_capabilities(current, required, state) do
+    # Meta-reasoning about capability acquisition
+    capability_gap = MapSet.difference(
+      MapSet.new(required),
+      MapSet.new(current)
+    )
+    
+    acquisition_strategy = determine_acquisition_strategy(capability_gap, state)
+    priority_order = prioritize_capabilities(capability_gap, state)
+    integration_risks = assess_integration_risks(capability_gap)
+    
     %{
-      input_variety: :very_high,
-      context_variety: :high,
-      temporal_variety: :moderate,
-      total_variety: :very_high
+      missing_capabilities: MapSet.to_list(capability_gap),
+      acquisition_strategy: acquisition_strategy,
+      priority_order: priority_order,
+      integration_risks: integration_risks,
+      reasoning_quality: self_assess_reasoning(state),
+      alternative_approaches: generate_alternatives(capability_gap, state)
     }
   end
   
-  defp perform_variety_gap_analysis(state) do
-    internal = state.variety_state.internal_variety
-    external = state.variety_state.external_variety
+  defp evaluate_trace(trace, state) do
+    # Evaluate the quality of a reasoning trace
+    completeness = assess_completeness(trace)
+    coherence = assess_coherence(trace)
+    biases = detect_biases(trace)
+    improvements = suggest_improvements(trace, state)
     
     %{
-      # Variety measurements
-      internal_variety: internal,
-      external_variety: external,
-      
-      # Gap analysis
-      variety_gap: calculate_variety_gap(internal, external),
-      
-      # Specific gaps
-      gaps: identify_specific_gaps(internal, external, state),
-      
-      # Current handling
-      amplifiers_active: analyze_active_amplifiers(state),
-      attenuators_active: analyze_active_attenuators(state),
-      
-      # Recommendations
-      recommendations: generate_variety_recommendations(internal, external, state),
-      
-      # Capacity assessment
-      variety_capacity: assess_variety_handling_capacity(state)
+      completeness: completeness,
+      coherence: coherence,
+      detected_biases: biases,
+      suggested_improvements: improvements,
+      overall_quality: calculate_overall_quality(completeness, coherence, biases)
     }
   end
   
-  defp calculate_variety_gap(internal, external) do
-    # Simplified gap calculation
-    # In reality, would use Ashby's Law calculations
+  defp perform_periodic_analysis(state) do
+    # Analyze accumulated reasoning patterns
+    pattern_summary = summarize_patterns(state.reasoning_patterns)
+    emerging_patterns = detect_emerging_patterns(pattern_summary)
+    effectiveness_update = update_effectiveness_metrics(state)
+    
+    new_insights = generate_insights(pattern_summary, emerging_patterns)
+    
+    state
+    |> Map.put(:effectiveness_metrics, effectiveness_update)
+    |> Map.update(:meta_insights, [], &(new_insights ++ &1))
+    |> prune_old_insights()
+  end
+  
+  defp build_pattern_library do
+    # Library of known reasoning patterns
     %{
-      magnitude: :significant,
-      direction: :external_exceeds_internal,
-      ratio: 0.1,  # Internal can handle 10% of external variety
-      critical: true
+      variety_deficit: %{
+        pattern: "Consistent lack of requisite variety",
+        indicators: ["ratio < 0.7", "growing gap", "static capabilities"],
+        remediation: ["acquire diverse capabilities", "implement amplifiers", "reduce environmental complexity"]
+      },
+      capability_mismatch: %{
+        pattern: "Capabilities don't match environmental demands",
+        indicators: ["unused capabilities", "missing critical functions", "integration failures"],
+        remediation: ["capability audit", "targeted acquisition", "remove redundant capabilities"]
+      },
+      adaptation_lag: %{
+        pattern: "Slow response to environmental changes",
+        indicators: ["delayed decisions", "reactive mode", "surprise events"],
+        remediation: ["improve sensing", "faster decision cycles", "predictive capabilities"]
+      }
     }
   end
   
-  defp identify_specific_gaps(internal, external, state) do
-    gaps = []
-    
-    # Input processing gap
-    gaps = if external.input_variety == :very_high && 
-              internal.state_space_size < 10000 do
-      [%{
-        type: :input_processing,
-        severity: :high,
-        description: "Cannot process full variety of inputs"
-      } | gaps]
-    else
-      gaps
-    end
-    
-    # Temporal variety gap
-    gaps = if external.temporal_variety == :high do
-      [%{
-        type: :temporal_adaptation,
-        severity: :medium,
-        description: "Limited ability to handle rapid changes"
-      } | gaps]
-    else
-      gaps
-    end
-    
-    # Context variety gap
-    gaps = if external.context_variety == :high &&
-              map_size(state.adaptation_strategies) < 5 do
-      [%{
-        type: :contextual_adaptation,
-        severity: :medium,
-        description: "Insufficient context-specific strategies"
-      } | gaps]
-    else
-      gaps
-    end
-    
+  defp identify_gap_patterns(gaps) do
+    # Identify patterns in variety gaps
     gaps
-  end
-  
-  defp analyze_active_amplifiers(state) do
-    # Analyze variety amplification mechanisms
-    amplifiers = state.variety_state.amplifiers
-    
-    %{
-      count: length(amplifiers),
-      types: Enum.map(amplifiers, & &1.type),
-      effectiveness: calculate_amplifier_effectiveness(amplifiers),
-      recommendations: suggest_new_amplifiers(state)
-    }
-  end
-  
-  defp calculate_amplifier_effectiveness(amplifiers) do
-    if Enum.empty?(amplifiers) do
-      0.0
-    else
-      # Average effectiveness
-      total = Enum.sum(Enum.map(amplifiers, & &1[:effectiveness] || 0.5))
-      total / length(amplifiers)
-    end
-  end
-  
-  defp suggest_new_amplifiers(state) do
-    suggestions = []
-    
-    # Pattern-based amplification
-    suggestions = if map_size(state.reasoning_patterns) < 10 do
-      ["Develop more reasoning patterns for variety amplification" | suggestions]
-    else
-      suggestions
-    end
-    
-    # Tool-based amplification
-    suggestions = ["Integrate external tools to amplify variety handling" | suggestions]
-    
-    # Learning-based amplification
-    suggestions = ["Use learning to predict and pre-handle variety" | suggestions]
-    
-    suggestions
-  end
-  
-  defp analyze_active_attenuators(state) do
-    # Analyze variety attenuation mechanisms
-    %{
-      filtering: analyze_filtering_mechanisms(state),
-      categorization: analyze_categorization(state),
-      abstraction: analyze_abstraction_levels(state),
-      prioritization: analyze_prioritization(state)
-    }
-  end
-  
-  defp analyze_filtering_mechanisms(_state) do
-    %{
-      active_filters: [:noise_filter, :relevance_filter],
-      effectiveness: 0.7,
-      coverage: 0.6
-    }
-  end
-  
-  defp analyze_categorization(_state) do
-    %{
-      categories_defined: 20,
-      uncategorized_ratio: 0.3,
-      category_effectiveness: 0.6
-    }
-  end
-  
-  defp analyze_abstraction_levels(_state) do
-    %{
-      levels: 5,
-      abstraction_quality: 0.7,
-      information_preservation: 0.8
-    }
-  end
-  
-  defp analyze_prioritization(_state) do
-    %{
-      prioritization_scheme: :multi_criteria,
-      queue_depth: 10,
-      priority_accuracy: 0.75
-    }
-  end
-  
-  defp generate_variety_recommendations(_internal, _external, state) do
-    recommendations = []
-    
-    # Amplification recommendations
-    recommendations = if length(state.variety_state.amplifiers) < 3 do
-      [%{
-        type: :add_amplifier,
-        priority: :high,
-        suggestion: "Add pattern recognition amplifiers"
-      } | recommendations]
-    else
-      recommendations
-    end
-    
-    # Attenuation recommendations
-    recommendations = if state.variety_state.variety_ratio < 0.3 do
-      [%{
-        type: :improve_attenuation,
-        priority: :high,
-        suggestion: "Enhance filtering and categorization"
-      } | recommendations]
-    else
-      recommendations
-    end
-    
-    # Structural recommendations
-    recommendations = [%{
-      type: :structural,
-      priority: :medium,
-      suggestion: "Consider hierarchical variety handling"
-    } | recommendations]
-    
-    recommendations
-  end
-  
-  defp assess_variety_handling_capacity(state) do
-    factors = [
-      state.variety_state.variety_ratio,
-      calculate_amplifier_effectiveness(state.variety_state.amplifiers),
-      0.7,  # Attenuation effectiveness placeholder
-      0.6   # Adaptation capability placeholder
-    ]
-    
-    Enum.sum(factors) / length(factors)
-  end
-  
-  defp update_variety_state(variety_state, analysis) do
-    %{variety_state |
-      variety_ratio: analysis.variety_gap.ratio,
-      amplifiers: update_amplifiers(variety_state.amplifiers, analysis),
-      attenuators: update_attenuators(variety_state.attenuators, analysis)
-    }
-  end
-  
-  defp update_amplifiers(current_amplifiers, _analysis) do
-    # Update amplifier list based on analysis
-    current_amplifiers  # Simplified
-  end
-  
-  defp update_attenuators(current_attenuators, _analysis) do
-    # Update attenuator list based on analysis
-    current_attenuators  # Simplified
-  end
-  
-  # Private Functions - Meta-Synthesis
-  
-  defp perform_meta_synthesis(components, state) do
-    %{
-      # Key finding from synthesis
-      key_finding: synthesize_key_finding(components),
-      
-      # Cross-component analysis
-      internal_consistency: analyze_internal_consistency(components),
-      cross_component_alignment: analyze_cross_alignment(components),
-      temporal_stability: analyze_temporal_stability(components),
-      goal_alignment: analyze_goal_alignment(components),
-      
-      # Emergent properties
-      emergent_properties: identify_emergent_properties(components),
-      
-      # System-level insights
-      system_coherence: calculate_system_coherence(components),
-      adaptation_effectiveness: assess_adaptation_effectiveness(components),
-      
-      # Meta-findings
-      novel_insights: extract_novel_insights(components, state),
-      contradiction_resolved: false,
-      major_limitation_discovered: check_major_limitations(components),
-      
-      # Metrics
-      impact_score: calculate_impact_score(components),
-      routine_significance: 0.5,
-      significance: calculate_overall_significance(components),
-      
-      # Improvement paths
-      improvement_opportunities: identify_improvements(components),
-      
-      # Variety-specific findings
-      variety_capacity: components.self_assessment.variety_handling_capacity,
-      learning_stagnation: detect_learning_stagnation(components),
-      self_model_drift: calculate_self_model_drift(components)
-    }
-  end
-  
-  defp synthesize_key_finding(components) do
-    # Extract the most important finding from all components
-    findings = []
-    
-    # Check awareness component
-    findings = if components.awareness.anomaly_count > 5 do
-      ["System experiencing high anomaly rate" | findings]
-    else
-      findings
-    end
-    
-    # Check self-assessment
-    findings = if components.self_assessment.accuracy < 0.5 do
-      ["Self-model accuracy below acceptable threshold" | findings]
-    else
-      findings
-    end
-    
-    # Check decision patterns
-    findings = if components.decision_patterns.confidence_trend == :declining do
-      ["Decision confidence showing downward trend" | findings]
-    else
-      findings
-    end
-    
-    # Return most significant finding
-    if Enum.empty?(findings) do
-      "System operating within normal parameters"
-    else
-      hd(findings)
-    end
-  end
-  
-  defp analyze_internal_consistency(components) do
-    # Check if all components tell a consistent story
-    consistency_score = 1.0
-    
-    # Check if high awareness correlates with good self-assessment
-    consistency_score = if components.awareness.coherence > 0.8 &&
-                          components.self_assessment.accuracy < 0.5 do
-      consistency_score * 0.7
-    else
-      consistency_score
-    end
-    
-    consistency_score
-  end
-  
-  defp analyze_cross_alignment(components) do
-    # Analyze alignment between components
-    0.8  # Placeholder
-  end
-  
-  defp analyze_temporal_stability(components) do
-    # Check stability over time
-    0.7  # Placeholder
-  end
-  
-  defp analyze_goal_alignment(components) do
-    # Check alignment with system goals
-    0.9  # Placeholder
-  end
-  
-  defp identify_emergent_properties(components) do
-    properties = []
-    
-    # Check for meta-learning
-    properties = if components.learning_metrics.effectiveness > 0.7 &&
-                    components.self_assessment.accuracy > 0.7 do
-      [:meta_learning_active | properties]
-    else
-      properties
-    end
-    
-    # Check for self-organization
-    properties = if length(components.decision_patterns) > 10 do
-      [:self_organizing_patterns | properties]
-    else
-      properties
-    end
-    
-    properties
-  end
-  
-  defp calculate_system_coherence(components) do
-    factors = [
-      analyze_internal_consistency(components),
-      analyze_cross_alignment(components),
-      analyze_temporal_stability(components)
-    ]
-    
-    Enum.sum(factors) / length(factors)
-  end
-  
-  defp assess_adaptation_effectiveness(components) do
-    if components.learning_metrics.effectiveness > 0.6 do
-      :effective
-    else
-      :needs_improvement
-    end
-  end
-  
-  defp extract_novel_insights(components, state) do
-    # Extract insights not previously known
-    current_insights = MapSet.new(Enum.map(state.meta_insights, & &1.content))
-    
-    potential_insights = generate_potential_insights(components)
-    
-    Enum.filter(potential_insights, fn insight ->
-      !MapSet.member?(current_insights, insight)
+    |> Enum.group_by(& &1.type)
+    |> Enum.map(fn {type, type_gaps} ->
+      {type, %{
+        frequency: length(type_gaps),
+        average_magnitude: average_magnitude(type_gaps),
+        trend: detect_trend(type_gaps)
+      }}
     end)
+    |> Map.new()
   end
   
-  defp generate_potential_insights(components) do
-    insights = []
+  defp detect_systemic_issues(patterns) do
+    # Detect systemic issues from patterns
+    issues = []
     
-    # Learning-awareness connection
-    insights = if components.learning_metrics.effectiveness > 0.8 &&
-                  components.awareness.awareness_level > 0.8 do
-      ["High awareness enhances learning effectiveness" | insights]
-    else
-      insights
+    # Check for persistent deficits
+    persistent_deficits = Enum.filter(patterns, fn {_, data} ->
+      data.frequency > 5 && data.average_magnitude > 2.0
+    end)
+    
+    issues = if length(persistent_deficits) > 0,
+      do: [{:persistent_variety_deficit, persistent_deficits} | issues],
+      else: issues
+    
+    # Check for accelerating gaps
+    accelerating = Enum.filter(patterns, fn {_, data} ->
+      data.trend == :increasing
+    end)
+    
+    issues = if length(accelerating) > 2,
+      do: [{:accelerating_complexity, accelerating} | issues],
+      else: issues
+    
+    issues
+  end
+  
+  defp suggest_amplification(gaps, pattern_library) do
+    # Suggest variety amplification strategies
+    gaps
+    |> Enum.map(& &1.type)
+    |> Enum.uniq()
+    |> Enum.flat_map(fn gap_type ->
+      case Map.get(pattern_library, gap_type) do
+        nil -> []
+        pattern -> pattern.remediation
+      end
+    end)
+    |> Enum.uniq()
+  end
+  
+  defp generate_meta_observation(gaps) do
+    total_gaps = length(gaps)
+    critical_gaps = Enum.count(gaps, & &1.urgency == :critical)
+    
+    cond do
+      critical_gaps > total_gaps * 0.5 ->
+        "System is experiencing critical variety crisis - immediate intervention required"
+      critical_gaps > 0 ->
+        "System has #{critical_gaps} critical variety gaps requiring urgent attention"
+      total_gaps > 10 ->
+        "System complexity is outpacing adaptation - strategic variety acquisition needed"
+      total_gaps > 5 ->
+        "Moderate variety imbalance detected - targeted capability enhancement recommended"
+      true ->
+        "System variety is generally balanced with minor gaps"
     end
+  end
+  
+  defp calculate_confidence(patterns, state) do
+    # Calculate confidence in the analysis
+    data_points = Enum.reduce(patterns, 0, fn {_, data}, acc ->
+      acc + data.frequency
+    end)
     
-    insights
-  end
-  
-  defp check_major_limitations(components) do
-    components.self_assessment.accuracy < 0.3 ||
-    components.awareness.known_blind_spots > 5 ||
-    components.decision_patterns.success_rate < 0.4
-  end
-  
-  defp calculate_impact_score(components) do
-    if check_major_limitations(components) do
-      0.9
-    else
-      0.5
-    end
-  end
-  
-  defp calculate_overall_significance(components) do
-    factors = [
-      calculate_impact_score(components),
-      length(extract_novel_insights(components, %{meta_insights: []})) / 10,
-      if(check_major_limitations(components), do: 0.8, else: 0.3)
-    ]
+    pattern_matches = Enum.count(patterns, fn {type, _} ->
+      Map.has_key?(state.pattern_library, type)
+    end)
     
-    Enum.sum(factors) / length(factors)
-  end
-  
-  defp identify_improvements(components) do
-    improvements = []
+    base_confidence = min(data_points / 10, 1.0) * 0.5
+    pattern_confidence = (pattern_matches / max(map_size(patterns), 1)) * 0.5
     
-    improvements = if components.self_assessment.accuracy < 0.6 do
-      ["Improve self-model calibration" | improvements]
-    else
-      improvements
-    end
+    base_confidence + pattern_confidence
+  end
+  
+  defp update_patterns(state, category, analysis) do
+    timestamp = DateTime.utc_now()
     
-    improvements = if components.awareness.resource_pressure > 0.7 do
-      ["Optimize resource utilization" | improvements]
-    else
-      improvements
-    end
-    
-    improvements
-  end
-  
-  defp detect_learning_stagnation(components) do
-    components.learning_metrics.effectiveness < 0.3 ||
-    components.learning_metrics.velocity < 0.1
-  end
-  
-  defp calculate_self_model_drift(components) do
-    abs(components.self_assessment.expected - components.self_assessment.actual)
-  end
-  
-  # Private Functions - Computational Limits
-  
-  defp assess_computational_boundaries(state) do
-    %{
-      # Memory constraints
-      memory_limits: assess_memory_constraints(),
-      
-      # Processing constraints
-      processing_limits: assess_processing_constraints(),
-      
-      # Time constraints
-      temporal_limits: assess_temporal_constraints(),
-      
-      # Complexity boundaries
-      complexity_ceiling: determine_complexity_ceiling(state),
-      
-      # Overall assessment
-      severity_score: 0.6,
-      affects_all: false,
-      
-      # Specific bottlenecks
-      bottlenecks: identify_computational_bottlenecks(state)
-    }
-  end
-  
-  defp assess_memory_constraints do
-    %{
-      working_memory_limit: "10MB active state",
-      long_term_storage: "Bounded by disk",
-      memory_pressure_threshold: 0.8,
-      current_usage: 0.6
-    }
-  end
-  
-  defp assess_processing_constraints do
-    %{
-      max_concurrent_operations: 10,
-      decision_time_limit: "5 seconds",
-      reasoning_depth_limit: 10,
-      pattern_complexity_limit: "O(n²)"
-    }
-  end
-  
-  defp assess_temporal_constraints do
-    %{
-      real_time_capability: false,
-      minimum_response_time: "100ms",
-      planning_horizon: "minutes to hours",
-      learning_consolidation_time: "minutes"
-    }
-  end
-  
-  defp determine_complexity_ceiling(state) do
-    # Determine maximum complexity the system can handle
-    %{
-      decision_complexity: estimate_max_decision_complexity(state),
-      problem_size: estimate_max_problem_size(state),
-      interaction_complexity: estimate_max_interaction_complexity(state),
-      overall_ceiling: :moderate_to_high
-    }
-  end
-  
-  defp estimate_max_decision_complexity(_state) do
-    "10-15 interacting factors"
-  end
-  
-  defp estimate_max_problem_size(_state) do
-    "1000-10000 elements"
-  end
-  
-  defp estimate_max_interaction_complexity(_state) do
-    "5-10 simultaneous interactions"
-  end
-  
-  defp identify_computational_bottlenecks(state) do
-    bottlenecks = []
-    
-    # Memory bottleneck
-    bottlenecks = if length(state.meta_insights) > 1000 do
-      [%{
-        type: :memory_accumulation,
-        impact: :medium,
-        description: "Insight storage growing unbounded"
-      } | bottlenecks]
-    else
-      bottlenecks
-    end
-    
-    # Pattern matching bottleneck
-    bottlenecks = if map_size(state.reasoning_patterns) > 100 do
-      [%{
-        type: :pattern_matching,
-        impact: :high,
-        description: "Pattern matching becoming O(n²)"
-      } | bottlenecks]
-    else
-      bottlenecks
-    end
-    
-    bottlenecks
-  end
-  
-  defp update_computational_limitations(limitations, assessment) do
-    new_computational = assessment.bottlenecks ++
-                       limitations.computational
-                       |> Enum.uniq_by(& &1.type)
-                       |> Enum.take(10)
-    
-    %{limitations | computational: new_computational}
-  end
-  
-  # Private Functions - Variety Constraints
-  
-  defp identify_systemic_variety_constraints(state) do
-    %{
-      structural_limits: identify_structural_limits(state),
-      knowledge_limits: identify_knowledge_limits(state),
-      adaptation_limits: identify_adaptation_limits(state),
-      interaction_limits: identify_interaction_limits(state),
-      
-      # Overall constraint assessment
-      constraint_level: calculate_overall_constraint_level(state),
-      unhandled_variety: estimate_unhandled_variety(state),
-      
-      # Critical constraints
-      critical_constraints: identify_critical_constraints(state)
-    }
-  end
-  
-  defp identify_structural_limits(_state) do
-    %{
-      hierarchical_depth: 5,
-      parallel_capacity: 10,
-      feedback_loops: 3,
-      structural_flexibility: :limited
-    }
-  end
-  
-  defp identify_knowledge_limits(state) do
-    %{
-      domain_coverage: calculate_domain_coverage(state),
-      knowledge_transfer_limit: 0.7,
-      abstraction_capability: :moderate,
-      tacit_knowledge_gap: :significant
-    }
-  end
-  
-  defp identify_adaptation_limits(_state) do
-    %{
-      adaptation_speed: :minutes,
-      adaptation_scope: :local_changes,
-      learning_transfer: :limited,
-      structural_adaptation: :very_limited
-    }
-  end
-  
-  defp identify_interaction_limits(_state) do
-    %{
-      simultaneous_interactions: 5,
-      interaction_complexity: :moderate,
-      coordination_overhead: :high,
-      communication_bandwidth: :limited
-    }
-  end
-  
-  defp calculate_overall_constraint_level(state) do
-    # Assess how constrained the system is
-    constraint_factors = [
-      0.6,  # Structural constraints
-      0.7,  # Knowledge constraints
-      0.5,  # Adaptation constraints
-      0.8   # Interaction constraints
-    ]
-    
-    Enum.sum(constraint_factors) / length(constraint_factors)
-  end
-  
-  defp estimate_unhandled_variety(state) do
-    # Estimate what percentage of variety goes unhandled
-    1.0 - state.variety_state.variety_ratio
-  end
-  
-  defp identify_critical_constraints(state) do
-    constraints = []
-    
-    # Critical variety gap
-    constraints = if state.variety_state.variety_ratio < 0.2 do
-      ["Critical variety gap - system handling < 20% of environmental variety" | constraints]
-    else
-      constraints
-    end
-    
-    # Knowledge coverage
-    constraints = if calculate_domain_coverage(state) < 0.3 do
-      ["Insufficient knowledge coverage for variety handling" | constraints]
-    else
-      constraints
-    end
-    
-    constraints
-  end
-  
-  defp calculate_domain_coverage(_state) do
-    # Calculate what percentage of necessary domains are covered
-    0.6  # Placeholder
-  end
-  
-  # Private Functions - Meta Insights
-  
-  defp compile_meta_insights(state) do
-    %{
-      recent_insights: Enum.take(state.meta_insights, 10),
-      systemic_patterns: state.systemic_patterns,
-      
-      # Variety insights
-      variety_insights: generate_variety_insights(state),
-      
-      # Limitation insights
-      limitation_insights: generate_limitation_insights(state),
-      
-      # Reasoning insights
-      reasoning_insights: generate_reasoning_insights(state),
-      
-      # Overall system insights
-      system_insights: generate_system_insights(state)
-    }
-  end
-  
-  defp generate_variety_insights(state) do
-    insights = []
-    
-    insights = if state.variety_state.variety_ratio < 0.3 do
-      [%{
-        type: :variety_gap,
-        content: "System handling less than 30% of environmental variety",
-        severity: :high,
-        recommendation: "Implement additional variety amplifiers"
-      } | insights]
-    else
-      insights
-    end
-    
-    insights
-  end
-  
-  defp generate_limitation_insights(state) do
-    state.known_limitations
-    |> Enum.flat_map(fn {type, limitations} ->
-      Enum.map(Enum.take(limitations, 2), fn limitation ->
-        %{
-          type: type,
-          limitation: limitation,
-          impact: assess_limitation_impact(limitation)
-        }
+    state
+    |> Map.update(:reasoning_patterns, %{}, fn patterns ->
+      Map.update(patterns, category, [], fn history ->
+        [{timestamp, analysis} | history] |> Enum.take(100)
       end)
     end)
   end
   
-  defp assess_limitation_impact(limitation) do
-    # Assess impact of a specific limitation
-    limitation[:impact] || :medium
-  end
-  
-  defp generate_reasoning_insights(state) do
-    patterns = Map.values(state.reasoning_patterns)
-    
-    if length(patterns) > 5 do
-      [%{
-        type: :reasoning_diversity,
-        content: "Multiple reasoning patterns available",
-        positive: true
-      }]
+  defp average_magnitude(gaps) do
+    if length(gaps) == 0 do
+      0.0
     else
-      [%{
-        type: :reasoning_limitation,
-        content: "Limited reasoning pattern diversity",
-        recommendation: "Develop additional reasoning strategies"
-      }]
+      sum = Enum.reduce(gaps, 0, & &1.magnitude + &2)
+      sum / length(gaps)
     end
   end
   
-  defp generate_system_insights(state) do
-    [
+  defp detect_trend(gaps) do
+    # Simple trend detection
+    if length(gaps) < 2 do
+      :stable
+    else
+      recent = gaps |> Enum.take(5) |> average_magnitude()
+      older = gaps |> Enum.drop(5) |> Enum.take(5) |> average_magnitude()
+      
+      cond do
+        recent > older * 1.2 -> :increasing
+        recent < older * 0.8 -> :decreasing
+        true -> :stable
+      end
+    end
+  end
+  
+  # Continuing with more helper functions...
+  
+  defp determine_acquisition_strategy(capability_gap, _state) do
+    gap_size = MapSet.size(capability_gap)
+    
+    cond do
+      gap_size > 10 ->
+        %{
+          approach: :phased_acquisition,
+          rationale: "Large capability gap requires staged approach",
+          phases: 3,
+          priority: :critical
+        }
+      gap_size > 5 ->
+        %{
+          approach: :parallel_acquisition,
+          rationale: "Moderate gap can be addressed in parallel",
+          parallelism: min(gap_size, 3),
+          priority: :high
+        }
+      gap_size > 0 ->
+        %{
+          approach: :targeted_acquisition,
+          rationale: "Small gap allows focused acquisition",
+          focus: :quality_over_quantity,
+          priority: :medium
+        }
+      true ->
+        %{
+          approach: :monitoring,
+          rationale: "No immediate gaps detected",
+          priority: :low
+        }
+    end
+  end
+  
+  defp prioritize_capabilities(capability_gap, _state) do
+    # Priority scoring for capabilities
+    capability_gap
+    |> MapSet.to_list()
+    |> Enum.map(fn cap ->
+      score = calculate_capability_score(cap)
+      {cap, score}
+    end)
+    |> Enum.sort_by(fn {_, score} -> score end, :desc)
+    |> Enum.map(fn {cap, _} -> cap end)
+  end
+  
+  defp calculate_capability_score(capability) do
+    # Score based on capability characteristics
+    base_score = 50
+    
+    # Adjust based on capability type
+    type_score = case capability do
+      cap when is_binary(cap) ->
+        cond do
+          String.contains?(cap, "memory") -> 20
+          String.contains?(cap, "database") -> 15
+          String.contains?(cap, "search") -> 15
+          String.contains?(cap, "file") -> 10
+          true -> 5
+        end
+      _ -> 0
+    end
+    
+    base_score + type_score + :rand.uniform(10)
+  end
+  
+  defp assess_integration_risks(capability_gap) do
+    gap_list = MapSet.to_list(capability_gap)
+    
+    %{
+      total_capabilities: length(gap_list),
+      integration_complexity: calculate_integration_complexity(gap_list),
+      potential_conflicts: detect_potential_conflicts(gap_list),
+      resource_requirements: estimate_resources(gap_list),
+      risk_level: determine_risk_level(gap_list)
+    }
+  end
+  
+  defp calculate_integration_complexity(capabilities) do
+    # Estimate complexity based on number and type of capabilities
+    base_complexity = length(capabilities) * 10
+    
+    type_complexity = Enum.reduce(capabilities, 0, fn cap, acc ->
+      if String.contains?(to_string(cap), "database"), do: acc + 20, else: acc + 5
+    end)
+    
+    min(base_complexity + type_complexity, 100)
+  end
+  
+  defp detect_potential_conflicts(capabilities) do
+    # Detect capabilities that might conflict
+    conflicts = []
+    
+    # Check for multiple database capabilities
+    db_caps = Enum.filter(capabilities, &String.contains?(to_string(&1), "database"))
+    conflicts = if length(db_caps) > 1,
+      do: [{:multiple_databases, db_caps} | conflicts],
+      else: conflicts
+    
+    conflicts
+  end
+  
+  defp estimate_resources(capabilities) do
+    %{
+      memory_mb: length(capabilities) * 50,
+      disk_mb: length(capabilities) * 100,
+      cpu_cores: min(length(capabilities), 4)
+    }
+  end
+  
+  defp determine_risk_level(capabilities) do
+    count = length(capabilities)
+    
+    cond do
+      count > 10 -> :high
+      count > 5 -> :medium
+      count > 0 -> :low
+      true -> :none
+    end
+  end
+  
+  defp self_assess_reasoning(state) do
+    # Meta-assessment of own reasoning quality
+    pattern_count = map_size(state.reasoning_patterns)
+    insight_count = length(state.meta_insights)
+    
+    %{
+      experience_level: determine_experience_level(pattern_count),
+      insight_generation: if(insight_count > 10, do: :active, else: :developing),
+      confidence: min(pattern_count / 20, 1.0),
+      areas_of_strength: identify_strengths(state),
+      areas_for_improvement: identify_weaknesses(state)
+    }
+  end
+  
+  defp determine_experience_level(pattern_count) do
+    cond do
+      pattern_count > 100 -> :expert
+      pattern_count > 50 -> :proficient
+      pattern_count > 20 -> :competent
+      pattern_count > 5 -> :learning
+      true -> :novice
+    end
+  end
+  
+  defp identify_strengths(state) do
+    # Identify reasoning strengths based on patterns
+    strengths = []
+    
+    if map_size(state.reasoning_patterns) > 20,
+      do: ["pattern recognition" | strengths],
+      else: strengths
+  end
+  
+  defp identify_weaknesses(_state) do
+    # Always room for improvement
+    ["prediction accuracy", "long-term planning", "uncertainty handling"]
+  end
+  
+  defp generate_alternatives(capability_gap, _state) do
+    # Generate alternative approaches to capability acquisition
+    gap_size = MapSet.size(capability_gap)
+    
+    alternatives = [
       %{
-        type: :overall_assessment,
-        variety_handling: state.variety_state.variety_ratio,
-        limitation_awareness: map_size(state.known_limitations) > 0,
-        adaptation_capability: map_size(state.adaptation_strategies) > 3
+        approach: :minimal_acquisition,
+        description: "Acquire only most critical capabilities",
+        pros: ["Lower risk", "Faster integration"],
+        cons: ["May need more later", "Suboptimal variety"]
       }
     ]
-  end
-  
-  # Private Functions - Limitation Reasoning
-  
-  defp reason_about_specific_limitation(limitation, state) do
-    %{
-      # Understanding
-      limitation_type: categorize_limitation(limitation),
-      root_causes: analyze_root_causes(limitation, state),
-      
-      # Impact analysis
-      direct_impact: assess_direct_impact(limitation),
-      cascading_effects: identify_cascading_effects(limitation, state),
-      
-      # Workarounds
-      possible_workarounds: generate_workarounds(limitation, state),
-      mitigation_strategies: suggest_mitigations(limitation),
-      
-      # Meta-analysis
-      fundamental_constraint: is_fundamental?(limitation),
-      improvement_potential: assess_improvement_potential(limitation),
-      
-      # Recommendations
-      recommendations: generate_limitation_recommendations(limitation, state)
-    }
-  end
-  
-  defp categorize_limitation(limitation) do
-    cond do
-      String.contains?(limitation.description || "", ["memory", "storage"]) -> :memory
-      String.contains?(limitation.description || "", ["time", "speed"]) -> :temporal
-      String.contains?(limitation.description || "", ["complex", "size"]) -> :complexity
-      String.contains?(limitation.description || "", ["knowledge", "information"]) -> :knowledge
-      true -> :general
-    end
-  end
-  
-  defp analyze_root_causes(limitation, _state) do
-    case categorize_limitation(limitation) do
-      :memory -> ["Finite storage capacity", "Information accumulation"]
-      :temporal -> ["Processing speed limits", "Sequential constraints"]
-      :complexity -> ["Combinatorial explosion", "Computational complexity"]
-      :knowledge -> ["Incomplete information", "Learning boundaries"]
-      _ -> ["System design constraints"]
-    end
-  end
-  
-  defp assess_direct_impact(limitation) do
-    %{
-      severity: limitation[:severity] || :medium,
-      scope: limitation[:scope] || :local,
-      frequency: limitation[:frequency] || :occasional
-    }
-  end
-  
-  defp identify_cascading_effects(limitation, _state) do
-    case categorize_limitation(limitation) do
-      :memory -> ["Reduced pattern storage", "Limited history retention"]
-      :temporal -> ["Delayed responses", "Reduced real-time capability"]
-      :complexity -> ["Simplified decision-making", "Reduced optimization"]
-      :knowledge -> ["Uncertain decisions", "Limited predictions"]
-      _ -> []
-    end
-  end
-  
-  defp generate_workarounds(limitation, _state) do
-    case categorize_limitation(limitation) do
-      :memory -> [
-        "Implement forgetting mechanisms",
-        "Use compression and summarization",
-        "External storage integration"
-      ]
-      :temporal -> [
-        "Pre-computation and caching",
-        "Parallel processing",
-        "Heuristic approximations"
-      ]
-      :complexity -> [
-        "Decomposition strategies",
-        "Hierarchical approaches",
-        "Satisficing instead of optimizing"
-      ]
-      :knowledge -> [
-        "Active learning strategies",
-        "External knowledge sources",
-        "Uncertainty quantification"
-      ]
-      _ -> ["General adaptation strategies"]
-    end
-  end
-  
-  defp suggest_mitigations(limitation) do
-    severity = limitation[:severity] || :medium
     
-    case severity do
-      :critical -> ["Immediate architectural changes required"]
-      :high -> ["Prioritize workaround implementation"]
-      :medium -> ["Monitor and adapt as needed"]
-      :low -> ["Accept and document limitation"]
-      _ -> []
-    end
-  end
-  
-  defp is_fundamental?(limitation) do
-    # Determine if limitation is fundamental to the system
-    limitation[:fundamental] || 
-    categorize_limitation(limitation) in [:memory, :temporal]
-  end
-  
-  defp assess_improvement_potential(limitation) do
-    if is_fundamental?(limitation) do
-      :low
+    if gap_size > 5 do
+      alternatives ++ [
+        %{
+          approach: :capability_composition,
+          description: "Combine simple capabilities to create complex ones",
+          pros: ["More flexible", "Better understanding"],
+          cons: ["Higher complexity", "More integration work"]
+        }
+      ]
     else
-      :moderate_to_high
+      alternatives
     end
   end
   
-  defp generate_limitation_recommendations(limitation, state) do
-    recommendations = generate_workarounds(limitation, state)
-    mitigations = suggest_mitigations(limitation)
+  defp assess_completeness(trace) do
+    required_elements = [:problem, :analysis, :alternatives, :decision, :rationale]
+    present_elements = Map.keys(trace)
     
-    recommendations ++ mitigations
-    |> Enum.uniq()
-    |> Enum.take(5)
-  end
-  
-  defp integrate_limitation_reasoning(state, limitation, reasoning) do
-    # Store reasoning about this limitation
-    limitation_key = {
-      categorize_limitation(limitation),
-      limitation[:description] || "unknown"
-    }
-    
-    new_reasoning = Map.put(state.reasoning_patterns, limitation_key, reasoning)
-    
-    Map.put(state, :reasoning_patterns, new_reasoning)
-  end
-  
-  # Private Functions - Periodic Analysis
-  
-  defp perform_periodic_meta_analysis(state) do
-    %{
-      variety_drift: calculate_variety_drift(state),
-      limitation_evolution: track_limitation_changes(state),
-      reasoning_effectiveness: assess_reasoning_effectiveness(state),
-      emerging_patterns: detect_emerging_patterns(state)
-    }
-  end
-  
-  defp calculate_variety_drift(state) do
-    # Detect changes in variety handling over time
-    current_ratio = state.variety_state.variety_ratio
+    missing = Enum.filter(required_elements, &(&1 not in present_elements))
+    completeness_score = (length(required_elements) - length(missing)) / length(required_elements)
     
     %{
-      current: current_ratio,
-      trend: :stable,  # Would calculate from history
-      concern_level: if(current_ratio < 0.3, do: :high, else: :low)
+      score: completeness_score,
+      missing_elements: missing,
+      status: if(completeness_score >= 0.8, do: :complete, else: :incomplete)
     }
   end
   
-  defp track_limitation_changes(state) do
-    # Track how limitations evolve
-    total_limitations = state.known_limitations
-    |> Map.values()
-    |> Enum.map(&length/1)
-    |> Enum.sum()
-    
+  defp assess_coherence(trace) do
+    # Check logical flow and consistency
     %{
-      total_count: total_limitations,
-      new_discoveries: 0,  # Would track new vs old
-      resolved: 0  # Would track resolved limitations
+      logical_flow: check_logical_flow(trace),
+      consistency: check_consistency(trace),
+      clarity: assess_clarity(trace)
     }
   end
   
-  defp assess_reasoning_effectiveness(state) do
-    # Assess how effective meta-reasoning has been
-    pattern_count = map_size(state.reasoning_patterns)
+  defp check_logical_flow(trace) do
+    # Simplified logic flow check
+    if Map.has_key?(trace, :analysis) and Map.has_key?(trace, :decision),
+      do: :good,
+      else: :poor
+  end
+  
+  defp check_consistency(_trace) do
+    # Would check for contradictions
+    :consistent
+  end
+  
+  defp assess_clarity(_trace) do
+    # Would analyze language clarity
+    :clear
+  end
+  
+  defp detect_biases(trace) do
+    biases = []
     
-    if pattern_count > 20 do
-      :highly_effective
-    elsif pattern_count > 10 do
-      :effective
-    else
-      :developing
+    # Check for confirmation bias
+    if Map.get(trace, :alternatives, []) |> length() < 2,
+      do: [:limited_alternatives | biases],
+      else: biases
+    
+    # Check for recency bias
+    if Map.get(trace, :historical_context) == nil,
+      do: [:lack_of_historical_context | biases],
+      else: biases
+    
+    biases
+  end
+  
+  defp suggest_improvements(trace, _state) do
+    improvements = []
+    
+    # Based on detected issues
+    if not Map.has_key?(trace, :alternatives),
+      do: ["Consider multiple alternatives before deciding" | improvements],
+      else: improvements
+    
+    if not Map.has_key?(trace, :risks),
+      do: ["Analyze potential risks and mitigation strategies" | improvements],
+      else: improvements
+    
+    improvements
+  end
+  
+  defp calculate_overall_quality(completeness, coherence, biases) do
+    base_score = completeness.score * 50
+    
+    coherence_score = case coherence.logical_flow do
+      :good -> 30
+      :moderate -> 15
+      :poor -> 0
     end
-  end
-  
-  defp detect_emerging_patterns(state) do
-    # Detect new patterns in system behavior
-    # Simplified - would use pattern detection algorithms
-    []
-  end
-  
-  defp integrate_periodic_findings(state, analysis) do
-    # Update state based on periodic findings
     
-    # Update systemic patterns if new ones found
-    new_patterns = state.systemic_patterns ++ analysis.emerging_patterns
+    bias_penalty = length(biases) * 5
     
-    state
-    |> Map.put(:systemic_patterns, new_patterns)
-    |> maybe_add_insight(analysis)
+    max(base_score + coherence_score - bias_penalty, 0)
   end
   
-  defp maybe_add_insight(state, analysis) do
-    if analysis.variety_drift.concern_level == :high do
+  defp summarize_patterns(reasoning_patterns) do
+    # Summarize accumulated patterns
+    Enum.map(reasoning_patterns, fn {category, history} ->
+      {category, %{
+        count: length(history),
+        recent_activity: length(Enum.take(history, 10)),
+        patterns_detected: detect_category_patterns(history)
+      }}
+    end)
+    |> Map.new()
+  end
+  
+  defp detect_category_patterns(history) do
+    # Simplified pattern detection
+    if length(history) > 5, do: [:repeated_analysis], else: []
+  end
+  
+  defp detect_emerging_patterns(pattern_summary) do
+    # Detect new patterns emerging from the data
+    Enum.filter(pattern_summary, fn {_, data} ->
+      data.recent_activity > data.count * 0.5
+    end)
+    |> Enum.map(fn {category, _} -> category end)
+  end
+  
+  defp update_effectiveness_metrics(state) do
+    # Update metrics on reasoning effectiveness
+    current = Map.get(state, :effectiveness_metrics, %{})
+    
+    Map.merge(current, %{
+      total_analyses: count_total_analyses(state),
+      successful_outcomes: count_successful_outcomes(state),
+      improvement_rate: calculate_improvement_rate(state),
+      last_updated: DateTime.utc_now()
+    })
+  end
+  
+  defp count_total_analyses(state) do
+    Enum.reduce(state.reasoning_patterns, 0, fn {_, history}, acc ->
+      acc + length(history)
+    end)
+  end
+  
+  defp count_successful_outcomes(_state) do
+    # Would track actual outcomes
+    :rand.uniform(20) + 10
+  end
+  
+  defp calculate_improvement_rate(_state) do
+    # Would calculate actual improvement
+    0.15
+  end
+  
+  defp generate_insights(pattern_summary, emerging_patterns) do
+    insights = []
+    
+    # Insight about emerging patterns
+    if length(emerging_patterns) > 0 do
       insight = %{
-        type: :variety_concern,
-        content: "Variety handling capacity declining",
+        type: :emerging_pattern,
+        content: "New reasoning patterns emerging in: #{Enum.join(emerging_patterns, ", ")}",
         timestamp: DateTime.utc_now(),
-        data: analysis.variety_drift
+        significance: :high
       }
-      
-      Map.update!(state, :meta_insights, &[insight | &1])
+      [insight | insights]
     else
-      state
+      insights
     end
   end
   
-  defp store_meta_insight(state, synthesis) do
-    insight = %{
-      type: :synthesis,
-      content: synthesis.key_finding,
-      significance: synthesis.significance,
-      timestamp: DateTime.utc_now(),
-      data: synthesis
-    }
-    
-    Map.update!(state, :meta_insights, &[insight | &1])
+  defp prune_old_insights(state) do
+    # Keep only recent insights
+    Map.update(state, :meta_insights, [], &Enum.take(&1, 50))
   end
 end

@@ -1,163 +1,71 @@
 defmodule VsmMcp.Supervisors.CoreSupervisor do
   @moduledoc """
-  Core Supervisor for the VSM-MCP system.
-  
-  Manages the supervision tree for all core components including:
-  - VSM Systems (1-5)
-  - MCP Server
-  - Variety Calculator
-  - Consciousness Interface
-  - Event Bus integration
-  - Pattern Engine integration
+  Core supervisor that manages all VSM components.
   """
   use Supervisor
   require Logger
-  
-  def start_link(opts \\ []) do
+
+  def start_link(opts) do
     Supervisor.start_link(__MODULE__, opts, name: __MODULE__)
   end
-  
+
   @impl true
   def init(opts) do
+    Logger.info("Starting Core Supervisor with options: #{inspect(opts)}")
+
     children = [
-      # Core infrastructure (start first)
-      {Phoenix.PubSub, name: VsmMcp.PubSub},
+      # Telemetry and monitoring
+      VsmMcp.Telemetry,
       
-      # Event Bus for inter-system communication
-      event_bus_spec(opts),
+      # Core VSM Systems (must start in order)
+      {VsmMcp.Systems.System5, name: VsmMcp.Systems.System5},
+      {VsmMcp.Systems.System4, name: VsmMcp.Systems.System4},
+      {VsmMcp.Systems.System3, name: VsmMcp.Systems.System3},
+      {VsmMcp.Systems.System2, name: VsmMcp.Systems.System2},
+      {VsmMcp.Systems.System1, name: VsmMcp.Systems.System1},
       
-      # Pattern Engine for System 3
-      pattern_engine_spec(opts),
+      # Variety management
+      {VsmMcp.Core.VarietyCalculator, name: VsmMcp.Core.VarietyCalculator},
       
-      # VSM Systems - Start in reverse order (System 5 first)
-      {VsmMcp.Systems.System5, []},
-      {VsmMcp.Systems.System4, []},
-      {VsmMcp.Systems.System3, []},
-      {VsmMcp.Systems.System2, []},
-      {VsmMcp.Systems.System1, []},
+      # Consciousness interface
+      {VsmMcp.Interfaces.ConsciousnessInterface, name: VsmMcp.Interfaces.ConsciousnessInterface},
       
-      # Core components
-      {VsmMcp.Core.VarietyCalculator, []},
-      {VsmMcp.Core.MCPDiscovery, []},
+      # MCP Discovery
+      {VsmMcp.Core.MCPDiscovery, name: VsmMcp.Core.MCPDiscovery},
       
-      # Interfaces
-      {VsmMcp.ConsciousnessInterface, []},
-      {VsmMcp.Interfaces.MCPServer, transport: :stdio},
-      
-      # Optional integrations
-      metrics_spec(opts),
-      security_spec(opts),
-      connections_spec(opts),
-      vector_store_spec(opts)
+      # Optional components
+      maybe_event_bus(opts),
+      maybe_pattern_engine(opts),
+      maybe_mcp_server(opts)
     ]
-    |> Enum.reject(&is_nil/1)
-    
-    Logger.info("Starting VSM-MCP Core Supervisor with #{length(children)} children")
-    
-    Supervisor.init(children, strategy: :one_for_one, max_restarts: 10, max_seconds: 60)
+    |> Enum.filter(& &1)
+
+    Supervisor.init(children, strategy: :one_for_one)
   end
-  
-  # Private helper functions for child specs
-  
-  defp event_bus_spec(opts) do
-    if Code.ensure_loaded?(VsmEventBus.Application) do
-      %{
-        id: VsmEventBus,
-        start: {VsmEventBus.Application, :start, [:normal, []]},
-        type: :supervisor
-      }
-    else
-      Logger.warning("VsmEventBus not available - skipping")
-      nil
+
+  defp maybe_event_bus(opts) do
+    if Keyword.get(opts, :enable_event_bus, true) do
+      event_bus_spec(opts)
     end
   end
-  
-  defp pattern_engine_spec(opts) do
-    if Code.ensure_loaded?(VsmPatternEngine.Application) do
-      %{
-        id: VsmPatternEngine,
-        start: {VsmPatternEngine.Application, :start, [:normal, []]},
-        type: :supervisor
-      }
-    else
-      Logger.warning("VsmPatternEngine not available - skipping")
-      nil
+
+  defp maybe_pattern_engine(opts) do
+    if Keyword.get(opts, :enable_pattern_engine, true) do
+      pattern_engine_spec(opts)
     end
   end
-  
-  defp metrics_spec(opts) do
-    if opts[:enable_metrics] && Code.ensure_loaded?(VsmMetrics) do
-      {VsmMetrics.Supervisor, []}
-    else
-      nil
+
+  defp maybe_mcp_server(opts) do
+    if Keyword.get(opts, :start_mcp_server, false) do
+      {VsmMcp.Interfaces.MCPServer, []}
     end
   end
-  
-  defp security_spec(opts) do
-    if opts[:enable_security] && Code.ensure_loaded?(VsmSecurity) do
-      {VsmSecurity.Supervisor, []}
-    else
-      nil
-    end
+
+  defp event_bus_spec(_opts) do
+    {Phoenix.PubSub, name: VsmMcp.PubSub}
   end
-  
-  defp connections_spec(opts) do
-    if opts[:enable_connections] && Code.ensure_loaded?(VsmConnections) do
-      {VsmConnections.Supervisor, []}
-    else
-      nil
-    end
-  end
-  
-  defp vector_store_spec(opts) do
-    if opts[:enable_vector_store] && Code.ensure_loaded?(VsmVectorStore) do
-      {VsmVectorStore.Supervisor, []}
-    else
-      nil
-    end
-  end
-  
-  @doc """
-  Get the status of all supervised children.
-  """
-  def status do
-    children = Supervisor.which_children(__MODULE__)
-    
-    Enum.map(children, fn {id, pid, type, modules} ->
-      %{
-        id: id,
-        pid: pid,
-        alive: is_pid(pid) and Process.alive?(pid),
-        type: type,
-        modules: modules
-      }
-    end)
-  end
-  
-  @doc """
-  Restart a specific child by ID.
-  """
-  def restart_child(child_id) do
-    case Supervisor.terminate_child(__MODULE__, child_id) do
-      :ok ->
-        Supervisor.restart_child(__MODULE__, child_id)
-      error ->
-        error
-    end
-  end
-  
-  @doc """
-  Dynamically add a new child to the supervision tree.
-  """
-  def add_child(child_spec) do
-    Supervisor.start_child(__MODULE__, child_spec)
-  end
-  
-  @doc """
-  Remove a child from the supervision tree.
-  """
-  def remove_child(child_id) do
-    Supervisor.terminate_child(__MODULE__, child_id)
-    Supervisor.delete_child(__MODULE__, child_id)
+
+  defp pattern_engine_spec(_opts) do
+    nil  # Pattern engine spec would go here if available
   end
 end

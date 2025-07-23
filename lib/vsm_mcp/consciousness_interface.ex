@@ -354,12 +354,20 @@ defmodule VsmMcp.ConsciousnessInterface do
   defp get_system_state do
     # Get current state of all VSM systems
     %{
-      system1: GenServer.call(VsmMcp.Systems.System1, :status, 5000) rescue nil,
-      system2: GenServer.call(VsmMcp.Systems.System2, :status, 5000) rescue nil,
-      system3: GenServer.call(VsmMcp.Systems.System3, :status, 5000) rescue nil,
-      system4: GenServer.call(VsmMcp.Systems.System4, :status, 5000) rescue nil,
-      system5: GenServer.call(VsmMcp.Systems.System5, :status, 5000) rescue nil
+      system1: safe_call(VsmMcp.Systems.System1, :status),
+      system2: safe_call(VsmMcp.Systems.System2, :status),
+      system3: safe_call(VsmMcp.Systems.System3, :status),
+      system4: safe_call(VsmMcp.Systems.System4, :status),
+      system5: safe_call(VsmMcp.Systems.System5, :status)
     }
+  end
+  
+  defp safe_call(server, message) do
+    try do
+      GenServer.call(server, message, 5000)
+    rescue
+      _ -> nil
+    end
   end
   
   defp get_recent_decisions(state) do
