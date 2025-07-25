@@ -130,7 +130,7 @@ defmodule VsmMcp.MCP.Server do
       {:ok, listening_state} ->
         {:reply, :ok, listening_state}
 
-      {:error, reason} = error ->
+      {:error, _reason} = error ->
         {:reply, error, state}
     end
   end
@@ -241,7 +241,7 @@ defmodule VsmMcp.MCP.Server do
             }
           }
         },
-        execute: fn params ->
+        execute: fn _params ->
           # Call System 1 monitoring
           case VsmMcp.Systems.System1.get_status() do
             {:ok, status} ->
@@ -364,8 +364,7 @@ defmodule VsmMcp.MCP.Server do
         execute: fn params ->
           case VsmMcp.Systems.System5.make_decision(
             params["context"],
-            params["options"],
-            params["criteria"] || []
+            params["options"]
           ) do
             {:ok, decision} ->
               {:ok, Jason.encode!(decision)}

@@ -9,7 +9,7 @@ defmodule VsmMcp.Core.VarietyCalculator do
   require Logger
   
   alias VsmMcp.Core.MCPDiscovery
-  alias VsmMcp.Systems.{System1, System3, System4}
+  # Note: Using fully qualified names instead of aliases for clarity
   
   # Client API
   
@@ -20,6 +20,13 @@ defmodule VsmMcp.Core.VarietyCalculator do
   def calculate_variety_gap(system, environment) do
     GenServer.call(__MODULE__, {:calculate_gap, system, environment})
   end
+
+  @doc """
+  Direct calculation without GenServer for simple use cases
+  """
+  def calculate_gap(system, environment) do
+    environment - system
+  end
   
   def monitor_variety do
     GenServer.call(__MODULE__, :monitor)
@@ -27,6 +34,14 @@ defmodule VsmMcp.Core.VarietyCalculator do
   
   def get_variety_report do
     GenServer.call(__MODULE__, :report)
+  end
+  
+  @doc """
+  Simple variety calculation for DaemonMode
+  Returns a ratio between 0.0 and 1.0
+  """
+  def calculate do
+    GenServer.call(__MODULE__, :calculate_simple)
   end
   
   # Server Callbacks
@@ -62,7 +77,7 @@ defmodule VsmMcp.Core.VarietyCalculator do
     env_variety = calculate_environmental_variety(environment)
     
     # Calculate the gap
-    gap = calculate_gap(system_variety, env_variety)
+    gap = calculate_variety_analysis(system_variety, env_variety)
     
     # Determine if acquisition is needed
     acquisition_needed = gap.ratio < state.variety_threshold
@@ -94,8 +109,8 @@ defmodule VsmMcp.Core.VarietyCalculator do
   @impl true
   def handle_call(:monitor, _from, state) do
     # Get current system state
-    system_status = System1.get_status()
-    environmental_scan = System4.scan_environment()
+    system_status = VsmMcp.Systems.System1.get_status()
+    environmental_scan = VsmMcp.Systems.System4.scan_environment()
     
     # Perform variety calculation
     result = calculate_variety_gap(system_status, environmental_scan)
@@ -116,10 +131,34 @@ defmodule VsmMcp.Core.VarietyCalculator do
   end
   
   @impl true
+  def handle_call(:calculate_simple, _from, state) do
+    # Simple calculation for DaemonMode
+    # Returns a ratio between 0.0 and 1.0
+    current_capabilities = try do
+      VsmMcp.Integration.CapabilityMatcher.get_all_capabilities()
+    rescue
+      _ -> ["core", "base", "vsm_integration"]
+    end
+    
+    # Base required capabilities
+    required = ["core", "base", "vsm_integration", "monitoring", "adaptation"]
+    
+    # Calculate ratio
+    ratio = if length(required) == 0 do
+      1.0
+    else
+      matched = Enum.count(required, fn req -> req in current_capabilities end)
+      matched / length(required)
+    end
+    
+    {:reply, ratio, state}
+  end
+  
+  @impl true
   def handle_info(:monitor_variety, state) do
     # Perform automatic monitoring
-    {:ok, env_scan} = System4.scan_environment()
-    system_status = System1.get_status()
+    {:ok, env_scan} = VsmMcp.Systems.System4.scan_environment()
+    system_status = VsmMcp.Systems.System1.get_status()
     
     # Calculate variety gap
     calculate_variety_gap(system_status, env_scan)
@@ -138,7 +177,7 @@ defmodule VsmMcp.Core.VarietyCalculator do
         Logger.info("Successfully acquired capability: #{inspect(capability)}")
         
         # Add capability to System 1
-        System1.add_capability(capability)
+        VsmMcp.Systems.System1.add_capability(capability)
         
         state
         |> Map.update!(:active_acquisitions, &Map.delete(&1, acquisition_id))
@@ -192,7 +231,7 @@ defmodule VsmMcp.Core.VarietyCalculator do
   
   defp count_coordination_variety do
     # Get coordination status
-    coord_status = System2.get_coordination_status()
+    coord_status = VsmMcp.Systems.System2.get_coordination_status()
     
     # Count coordination patterns
     patterns = Map.get(coord_status, :patterns, [])
@@ -203,7 +242,7 @@ defmodule VsmMcp.Core.VarietyCalculator do
   
   defp count_control_variety do
     # Get control metrics
-    control_metrics = System3.get_control_metrics()
+    control_metrics = VsmMcp.Systems.System3.get_control_metrics()
     
     # Count control mechanisms
     mechanisms = Map.get(control_metrics, :control_mechanisms, [])
@@ -214,7 +253,7 @@ defmodule VsmMcp.Core.VarietyCalculator do
   
   defp count_intelligence_variety do
     # Get intelligence report
-    intel_report = System4.get_intelligence_report()
+    intel_report = VsmMcp.Systems.System4.get_intelligence_report()
     
     # Count intelligence capabilities
     sensors = Map.get(intel_report, :active_sensors, 0)
@@ -225,7 +264,7 @@ defmodule VsmMcp.Core.VarietyCalculator do
   
   defp count_policy_variety do
     # Get policy information
-    health = System5.review_system_health()
+    health = VsmMcp.Systems.System5.review_system_health()
     
     # Count policy dimensions
     policy_coverage = get_in(health, [:components, :policy_coverage]) || 0
@@ -275,7 +314,7 @@ defmodule VsmMcp.Core.VarietyCalculator do
     Map.put(variety_map, :total, total)
   end
   
-  defp calculate_gap(system_variety, env_variety) do
+  defp calculate_variety_analysis(system_variety, env_variety) do
     ratio = if env_variety.total > 0 do
       system_variety.total / env_variety.total
     else
@@ -423,6 +462,6 @@ defmodule VsmMcp.Core.VarietyCalculator do
   end
   
   defp update_metrics(state, metric) do
-    Map.update_in(state, [:metrics, metric], &(&1 + 1))
+    update_in(state, [:metrics, metric], &(&1 + 1))
   end
 end

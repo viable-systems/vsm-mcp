@@ -140,7 +140,7 @@ defmodule VsmMcp.Integrations.EventBusIntegration do
     Logger.debug("Processing event: #{event.type} from #{event.system}")
     
     # Update metrics
-    new_state = Map.update_in(state, [:metrics, :events_received], &(&1 + 1))
+    new_state = update_in(state, [:metrics, :events_received], &(&1 + 1))
     
     # Find and execute handler
     handler = Map.get(state.event_handlers, event.type)
@@ -148,7 +148,7 @@ defmodule VsmMcp.Integrations.EventBusIntegration do
     if handler do
       case handler.(event, new_state) do
         {:ok, updated_state} ->
-          Map.update_in(updated_state, [:metrics, :events_processed], &(&1 + 1))
+          update_in(updated_state, [:metrics, :events_processed], &(&1 + 1))
         
         {:error, reason} ->
           Logger.error("Event handler failed: #{reason}")

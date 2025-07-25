@@ -48,7 +48,7 @@ defmodule VsmMcp.MCP.Transports.WebSocket do
         Logger.info("WebSocket server listening on port #{port} at path #{path}")
         {:reply, :ok, %{state | mode: :server, port: port, path: path}}
 
-      {:error, reason} = error ->
+      {:error, _reason} = error ->
         {:reply, error, state}
     end
   end
@@ -59,7 +59,7 @@ defmodule VsmMcp.MCP.Transports.WebSocket do
       {:ok, connection} ->
         {:reply, :ok, %{state | connection: connection}}
 
-      {:error, reason} = error ->
+      {:error, _reason} = error ->
         {:reply, error, state}
     end
   end
@@ -70,7 +70,7 @@ defmodule VsmMcp.MCP.Transports.WebSocket do
       # Send via WebSocket
       send_websocket(state.connection, message)
     else
-      Logger.warn("Attempted to send message without active WebSocket connection")
+      Logger.warning("Attempted to send message without active WebSocket connection")
     end
 
     {:noreply, state}
@@ -123,7 +123,7 @@ defmodule VsmMcp.MCP.Transports.WebSocket do
   end
 
   defp send_websocket(conn_pid, message) do
-    :gun.ws_send(conn_pid, {:text, message})
+    :gun.ws_send(conn_pid, :stream_ref, {:text, message})
   end
 end
 

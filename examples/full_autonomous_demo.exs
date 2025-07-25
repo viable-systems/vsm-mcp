@@ -80,11 +80,11 @@ IO.puts "\n=== Demonstrating Consciousness Interface ===\n"
 
 # Query consciousness
 IO.puts "Querying consciousness interface..."
-awareness = VsmMcp.Interfaces.ConsciousnessInterface.query(:awareness)
+awareness = VsmMcp.ConsciousnessInterface.query(:awareness)
 IO.inspect(awareness, label: "Consciousness Awareness")
 
 # Make conscious decision
-conscious_decision = VsmMcp.Interfaces.ConsciousnessInterface.make_conscious_decision(%{
+conscious_decision = VsmMcp.ConsciousnessInterface.make_conscious_decision(%{
   type: :strategic,
   options: ["expand", "consolidate", "pivot"],
   context: %{market_conditions: :volatile, resources: :limited}
@@ -188,7 +188,7 @@ IO.puts "\n=== Final System Report ===\n"
 # Generate comprehensive report
 final_status = VsmMcp.system_status()
 variety_report = VsmMcp.Core.VarietyCalculator.get_variety_report()
-consciousness_report = VsmMcp.Interfaces.ConsciousnessInterface.generate_awareness_report()
+consciousness_report = VsmMcp.ConsciousnessInterface.generate_awareness_report()
 pattern_report = VsmMcp.Integrations.PatternEngineIntegration.get_pattern_report()
 
 IO.puts """

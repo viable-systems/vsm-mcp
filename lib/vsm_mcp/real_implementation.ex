@@ -45,7 +45,7 @@ defmodule VsmMcp.RealImplementation do
     |> Enum.sort_by(& &1.score, :desc)
     
     Logger.info("Found #{length(servers)} real MCP servers")
-    servers
+    {:ok, servers}
   end
   
   @doc """

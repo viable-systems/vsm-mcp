@@ -28,7 +28,7 @@ defmodule VsmMcp.Supervisors.CoreSupervisor do
       {VsmMcp.Core.VarietyCalculator, name: VsmMcp.Core.VarietyCalculator},
       
       # Consciousness interface
-      {VsmMcp.Interfaces.ConsciousnessInterface, name: VsmMcp.Interfaces.ConsciousnessInterface},
+      {VsmMcp.ConsciousnessInterface, name: VsmMcp.ConsciousnessInterface},
       
       # MCP Discovery
       {VsmMcp.Core.MCPDiscovery, name: VsmMcp.Core.MCPDiscovery},

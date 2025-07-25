@@ -1,0 +1,5 @@
+
+19:31:48.915 [info] Starting integration system test...
+** (MatchError) no match of right hand side value: {:error, {:jason, {~c"no such file or directory", ~c"jason.app"}}}
+    examples/test_integration_system.exs:16: IntegrationTest.run/0
+    examples/test_integration_system.exs:123: (file)

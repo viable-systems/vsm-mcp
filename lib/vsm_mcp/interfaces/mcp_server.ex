@@ -8,9 +8,8 @@ defmodule VsmMcp.Interfaces.MCPServer do
   use GenServer
   require Logger
   
-  alias VsmMcp.Systems.{System1, System2, System3, System4, System5}
   alias VsmMcp.Core.VarietyCalculator
-  alias VsmMcp.Interfaces.ConsciousnessInterface
+  alias VsmMcp.ConsciousnessInterface
   
   @server_info %{
     name: "vsm-mcp",
@@ -305,7 +304,7 @@ defmodule VsmMcp.Interfaces.MCPServer do
       output: args["output"]
     }
     
-    result = System1.execute_operation(operation)
+    result = VsmMcp.Systems.System1.execute_operation(operation)
     
     new_state = update_metrics(state, :tool_calls)
     {result, new_state}
@@ -315,7 +314,7 @@ defmodule VsmMcp.Interfaces.MCPServer do
     units = Enum.map(args["units"], &String.to_atom/1)
     task = args["task"]
     
-    result = System2.coordinate(units, task)
+    result = VsmMcp.Systems.System2.coordinate(units, task)
     
     new_state = update_metrics(state, :tool_calls)
     {result, new_state}
@@ -334,7 +333,7 @@ defmodule VsmMcp.Interfaces.MCPServer do
     scope = args["scope"] || "all"
     depth = args["depth"] || "shallow"
     
-    result = System4.scan_environment(%{scope: scope, depth: depth})
+    result = VsmMcp.Systems.System4.scan_environment(%{scope: scope, depth: depth})
     
     new_state = update_metrics(state, :tool_calls)
     {result, new_state}
@@ -344,7 +343,7 @@ defmodule VsmMcp.Interfaces.MCPServer do
     decision = args["decision"]
     context = args["context"] || %{}
     
-    result = System5.validate_decision(decision, context)
+    result = VsmMcp.Systems.System5.validate_decision(decision, context)
     
     new_state = update_metrics(state, :tool_calls)
     {result, new_state}
@@ -393,11 +392,11 @@ defmodule VsmMcp.Interfaces.MCPServer do
   end
   
   defp read_resource("vsm://policies", _state) do
-    System5.get_policy(:all)
+    VsmMcp.Systems.System5.get_policy(:all)
   end
   
   defp read_resource("vsm://capabilities", _state) do
-    System1.get_status().capabilities
+    VsmMcp.Systems.System1.get_status().capabilities
   end
   
   defp read_resource("vsm://metrics", _state) do
@@ -405,16 +404,16 @@ defmodule VsmMcp.Interfaces.MCPServer do
   end
   
   defp update_metrics(state, metric) do
-    Map.update_in(state, [:metrics, metric], &(&1 + 1))
+    update_in(state, [:metrics, metric], &(&1 + 1))
   end
   
   defp gather_detailed_metrics do
     %{
-      system1: System1.get_status().metrics,
-      system2: System2.get_coordination_status(),
-      system3: System3.get_control_metrics(),
-      system4: System4.get_intelligence_report(),
-      system5: System5.review_system_health(),
+      system1: VsmMcp.Systems.System1.get_status().metrics,
+      system2: VsmMcp.Systems.System2.get_coordination_status(),
+      system3: VsmMcp.Systems.System3.get_control_metrics(),
+      system4: VsmMcp.Systems.System4.get_intelligence_report(),
+      system5: VsmMcp.Systems.System5.review_system_health(),
       timestamp: DateTime.utc_now()
     }
   end

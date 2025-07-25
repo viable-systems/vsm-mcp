@@ -36,7 +36,7 @@ defmodule VsmMcp.Systems.System5Test do
         constraints: ["limited_budget", "time_pressure"]
       }
       
-      {:ok, decision} = System5.make_decision(pid, context)
+      {:ok, decision} = System5.make_decision(context, context.options)
       
       assert is_map(decision)
       assert Map.has_key?(decision, :choice)
@@ -52,7 +52,7 @@ defmodule VsmMcp.Systems.System5Test do
           options: ["option_a", "option_b"],
           constraints: []
         }
-        System5.make_decision(pid, context)
+        System5.make_decision(context, context.options)
       end
       
       status = System5.get_status(pid)
@@ -163,7 +163,7 @@ defmodule VsmMcp.Systems.System5Test do
         options: ["a", "b"],
         constraints: []
       }
-      System5.make_decision(pid, context)
+      System5.make_decision(context, context.options)
 
       assert_receive {:telemetry, [:vsm_mcp, :system5, :decision], measurements, metadata}
       assert measurements.decision_time > 0

@@ -163,13 +163,13 @@ VsmMcp.Core.VarietyCalculator.monitor_variety()
 
 ```elixir
 # Query awareness
-VsmMcp.Interfaces.ConsciousnessInterface.query(:awareness)
+VsmMcp.ConsciousnessInterface.query(:awareness)
 
 # Make conscious decision
-VsmMcp.Interfaces.ConsciousnessInterface.make_conscious_decision(context)
+VsmMcp.ConsciousnessInterface.make_conscious_decision(context)
 
 # Generate awareness report
-VsmMcp.Interfaces.ConsciousnessInterface.generate_awareness_report()
+VsmMcp.ConsciousnessInterface.generate_awareness_report()
 ```
 
 ### MCP Integration

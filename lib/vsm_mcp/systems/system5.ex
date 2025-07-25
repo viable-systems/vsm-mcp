@@ -26,6 +26,14 @@ defmodule VsmMcp.Systems.System5 do
     GenServer.call(__MODULE__, {:validate_decision, decision, context})
   end
 
+  def get_status do
+    GenServer.call(__MODULE__, :status)
+  end
+
+  def make_decision(context, options) do
+    GenServer.call(__MODULE__, {:make_decision, context, options})
+  end
+
   def balance_objectives(present_needs, future_goals) do
     GenServer.call(__MODULE__, {:balance, present_needs, future_goals})
   end
@@ -80,7 +88,7 @@ defmodule VsmMcp.Systems.System5 do
         Logger.info("Policy updated: #{policy_type}")
         {:reply, {:ok, validated_policy}, new_state}
       
-      {:error, reason} = error ->
+      {:error, _reason} = error ->
         {:reply, error, state}
     end
   end
@@ -123,6 +131,54 @@ defmodule VsmMcp.Systems.System5 do
     new_state = Map.put(state, :balance_metrics, new_balance_metrics)
     
     {:reply, {:ok, balance_recommendation}, new_state}
+  end
+
+  @impl true
+  def handle_call(:status, _from, state) do
+    status = %{
+      active: true,
+      decisions_made: length(state.decision_history),
+      policies_active: map_size(state.policies),
+      balance_focus: state.balance_metrics,
+      identity_strength: assess_identity_clarity(state.identity),
+      last_health_review: state.balance_metrics.last_review,
+      decision_success_rate: calculate_decision_success_rate(state.decision_history),
+      system_viability: assess_system_viability(state),
+      purpose: state.identity.purpose
+    }
+    
+    {:reply, status, state}
+  end
+
+  @impl true
+  def handle_call({:make_decision, decision, context}, _from, state) do
+    # Make a policy-guided decision
+    # Generate options based on the decision
+    options = generate_decision_options(decision, context)
+    result = formulate_decision(context, options, state)
+    
+    # Validate the decision
+    validation = perform_decision_validation(result, context, state)
+    
+    # Record the decision
+    decision_record = %{
+      decision: decision,
+      context: context,
+      validation: validation,
+      timestamp: DateTime.utc_now(),
+      status: if(validation.valid, do: :approved, else: :rejected)
+    }
+    
+    new_history = [decision_record | state.decision_history] |> Enum.take(1000)
+    new_state = Map.put(state, :decision_history, new_history)
+    
+    result = if validation.valid do
+      {:ok, decision}
+    else
+      {:error, validation.recommendation}
+    end
+    
+    {:reply, result, new_state}
   end
 
   @impl true
@@ -257,7 +313,7 @@ defmodule VsmMcp.Systems.System5 do
     }
   end
 
-  defp assess_future_impact(decision, _context) do
+  defp assess_future_impact(_decision, _context) do
     # Simplified future impact assessment
     impact_score = Enum.random(60..95) / 100
     
@@ -279,7 +335,7 @@ defmodule VsmMcp.Systems.System5 do
 
   defp policy_applies_to_decision?(policy, decision) do
     # Simplified check
-    policy.scope == :all or policy.scope == decision.type
+    policy.scope == :all or policy.scope == Map.get(decision, :type, nil)
   end
 
   defp detect_violations(_decision, _policies) do
@@ -510,5 +566,286 @@ defmodule VsmMcp.Systems.System5 do
         ethical: :required
       }
     }
+  end
+
+  defp calculate_decision_success_rate(decision_history) do
+    if Enum.empty?(decision_history) do
+      1.0  # No failures yet
+    else
+      recent_decisions = Enum.take(decision_history, 50)
+      successful = Enum.count(recent_decisions, & &1.status == :approved)
+      successful / length(recent_decisions)
+    end
+  end
+
+  defp assess_system_viability(state) do
+    # Comprehensive viability assessment
+    factors = [
+      assess_identity_clarity(state.identity) * 0.2,
+      assess_policy_coverage(state.policies) * 0.2,
+      calculate_decision_success_rate(state.decision_history) * 0.2,
+      assess_balance_health(state.balance_metrics) * 0.2,
+      assess_adaptability(state) * 0.2
+    ]
+    
+    Enum.sum(factors)
+  end
+
+  defp formulate_decision(context, options, state) do
+    # Analyze context and options
+    context_analysis = analyze_decision_context(context, state)
+    option_evaluation = evaluate_options(options, context_analysis, state)
+    
+    # Select best option based on policies and identity
+    selected_option = select_best_option(option_evaluation, state)
+    
+    %{
+      type: context[:type] || :operational,
+      selected_option: selected_option,
+      rationale: generate_decision_rationale(selected_option, context_analysis, state),
+      expected_outcomes: predict_outcomes(selected_option, context),
+      implementation_plan: create_implementation_plan(selected_option),
+      resources: estimate_required_resources(selected_option),
+      risks: identify_risks(selected_option, context),
+      alignment_score: calculate_alignment_score(selected_option, state.identity)
+    }
+  end
+
+  defp analyze_decision_context(context, state) do
+    %{
+      urgency: context[:urgency] || :medium,
+      scope: context[:scope] || :local,
+      stakeholders: context[:stakeholders] || [],
+      constraints: merge_constraints(context[:constraints] || %{}, state.system_constraints),
+      opportunities: context[:opportunities] || [],
+      threats: context[:threats] || []
+    }
+  end
+
+  defp evaluate_options(options, context_analysis, state) do
+    Enum.map(options, fn option ->
+      %{
+        option: option,
+        feasibility: assess_option_feasibility(option, context_analysis.constraints),
+        alignment: assess_policy_alignment(option, state.policies),
+        impact: estimate_option_impact(option, context_analysis),
+        risk: assess_option_risk(option),
+        score: calculate_option_score(option, context_analysis, state)
+      }
+    end)
+  end
+
+  defp select_best_option(evaluations, _state) do
+    best_evaluation = Enum.max_by(evaluations, & &1.score)
+    best_evaluation.option
+  end
+
+  defp generate_decision_rationale(_option, context_analysis, state) do
+    "Selected based on alignment with #{state.identity.mission}, " <>
+    "considering #{context_analysis.urgency} urgency and " <>
+    "optimization for #{describe_optimization_focus(state.balance_metrics)}"
+  end
+
+  defp predict_outcomes(option, _context) do
+    %{
+      short_term: Map.get(option, :short_term_benefits, ["immediate implementation"]),
+      long_term: Map.get(option, :long_term_benefits, ["sustainable growth"]),
+      side_effects: Map.get(option, :side_effects, []),
+      success_probability: Enum.random(60..95) / 100
+    }
+  end
+
+  defp create_implementation_plan(option) do
+    %{
+      phases: Map.get(option, :phases, [:planning, :execution, :monitoring]),
+      timeline: Map.get(option, :timeline, "3-6 months"),
+      milestones: Map.get(option, :milestones, ["kickoff", "midpoint review", "completion"]),
+      success_metrics: Map.get(option, :metrics, ["on-time delivery", "budget adherence"])
+    }
+  end
+
+  defp estimate_required_resources(option) do
+    Map.get(option, :resources, %{
+      budget: Enum.random(10_000..100_000),
+      personnel: Enum.random(1..10),
+      time_days: Enum.random(30..180)
+    })
+  end
+
+  defp identify_risks(option, context) do
+    base_risks = Map.get(option, :risks, [])
+    context_risks = Map.get(context, :environmental_risks, [])
+    
+    (base_risks ++ context_risks)
+    |> Enum.uniq()
+    |> Enum.take(5)
+  end
+
+  defp calculate_alignment_score(option, identity) do
+    # Score how well the option aligns with organizational identity
+    value_alignment = calculate_value_alignment(option, identity.values)
+    mission_alignment = calculate_mission_alignment(option, identity.mission)
+    purpose_alignment = calculate_purpose_alignment(option, identity.purpose)
+    
+    (value_alignment + mission_alignment + purpose_alignment) / 3
+  end
+
+  defp merge_constraints(context_constraints, system_constraints) do
+    # Handle context_constraints being either a list or a map
+    normalized_constraints = case context_constraints do
+      list when is_list(list) ->
+        # Convert list of constraints to map
+        Enum.reduce(list, %{}, fn constraint, acc ->
+          Map.put(acc, String.to_atom(to_string(constraint)), true)
+        end)
+      map when is_map(map) -> map
+      _ -> %{}
+    end
+    
+    Map.merge(system_constraints, normalized_constraints, fn _k, v1, v2 ->
+      case {v1, v2} do
+        {n1, n2} when is_number(n1) and is_number(n2) -> min(n1, n2)
+        _ -> v2
+      end
+    end)
+  end
+
+  defp assess_option_feasibility(option, constraints) do
+    required_resources = Map.get(option, :resources, %{})
+    available_resources = constraints.resources
+    
+    resource_feasibility = Enum.all?(required_resources, fn {resource, amount} ->
+      available = Map.get(available_resources, resource, 0)
+      available >= amount
+    end)
+    
+    if resource_feasibility, do: 1.0, else: 0.5
+  end
+
+  defp assess_policy_alignment(option, policies) do
+    applicable_policies = find_applicable_policies(option, policies)
+    
+    if Enum.empty?(applicable_policies) do
+      0.7  # Neutral if no policies apply
+    else
+      violations = count_policy_violations(option, applicable_policies)
+      1.0 - (violations / length(applicable_policies))
+    end
+  end
+
+  defp estimate_option_impact(option, _context_analysis) do
+    Map.get(option, :impact_score, Enum.random(50..90) / 100)
+  end
+
+  defp assess_option_risk(option) do
+    Map.get(option, :risk_level, Enum.random(10..50) / 100)
+  end
+
+  defp calculate_option_score(option, context_analysis, state) do
+    weights = %{
+      feasibility: 0.25,
+      alignment: 0.35,
+      impact: 0.25,
+      risk: 0.15
+    }
+    
+    evaluation = %{
+      feasibility: assess_option_feasibility(option, context_analysis.constraints),
+      alignment: assess_policy_alignment(option, state.policies),
+      impact: estimate_option_impact(option, context_analysis),
+      risk: 1.0 - assess_option_risk(option)  # Invert risk for scoring
+    }
+    
+    Enum.reduce(weights, 0, fn {factor, weight}, score ->
+      score + (evaluation[factor] * weight)
+    end)
+  end
+
+  defp describe_optimization_focus(balance_metrics) do
+    if balance_metrics.present_focus > balance_metrics.future_focus do
+      "present operational needs"
+    else
+      "future strategic positioning"
+    end
+  end
+
+  defp calculate_value_alignment(_option, values) do
+    # Simplified - check if option respects core values
+    if Enum.any?(values, & &1 in [:integrity, :sustainability]) do
+      0.9
+    else
+      0.7
+    end
+  end
+
+  defp calculate_mission_alignment(_option, _mission) do
+    # Simplified mission alignment check
+    Enum.random(70..95) / 100
+  end
+
+  defp calculate_purpose_alignment(_option, _purpose) do
+    # Simplified purpose alignment check
+    Enum.random(75..90) / 100
+  end
+
+  defp count_policy_violations(_option, _policies) do
+    # Simplified - randomly generate violations for demo
+    Enum.random(0..2)
+  end
+
+  defp assess_adaptability(state) do
+    # Assess system's ability to adapt
+    factors = [
+      map_size(state.policies) > 2,
+      length(state.decision_history) > 10,
+      state.balance_metrics.present_focus != state.balance_metrics.future_focus
+    ]
+    
+    Enum.count(factors, & &1) / length(factors)
+  end
+  
+  defp generate_decision_options(decision, context) do
+    # Generate decision options based on the decision request
+    case decision do
+      %{objective: "acquire_capability", capability: capability} ->
+        # Generate options for capability acquisition
+        [
+          %{
+            name: "mcp_integration",
+            type: :capability_acquisition,
+            capability: capability,
+            method: :mcp_server,
+            resources: %{time: 1, effort: 2},
+            risk: :low
+          },
+          %{
+            name: "npm_package",
+            type: :capability_acquisition,
+            capability: capability,
+            method: :npm_install,
+            resources: %{time: 0.5, effort: 1},
+            risk: :very_low
+          },
+          %{
+            name: "custom_development",
+            type: :capability_acquisition,
+            capability: capability,
+            method: :build,
+            resources: %{time: 5, effort: 10},
+            risk: :medium
+          }
+        ]
+      
+      _ ->
+        # Default options
+        [
+          %{
+            name: "default_action",
+            type: :general,
+            resources: %{time: 1, effort: 1},
+            risk: :low
+          }
+        ]
+    end
   end
 end

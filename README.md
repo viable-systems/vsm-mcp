@@ -107,6 +107,34 @@ When running as an MCP server, the following tools are exposed:
 - `event_publish` - Publish system events
 - `pattern_analyze` - Analyze system patterns
 
+## 🔒 Security Features
+
+### Sandbox Isolation
+- **Process Isolation**: Each MCP server runs in a sandboxed environment
+- **Resource Limits**: Memory (512MB) and CPU (50%) caps per server
+- **Network Restrictions**: Whitelist-only network access
+- **File System Isolation**: Restricted to sandbox directories only
+
+### Package Security
+- **Whitelist Enforcement**: Only approved npm packages allowed
+- **Dependency Scanning**: Automatic vulnerability detection
+- **Code Pattern Analysis**: Blocks dangerous operations (eval, exec, etc.)
+- **Permission Auditing**: Detects overly permissive files
+
+### Secure Integration
+```elixir
+# All MCP servers are verified before integration
+{:ok, result} = VsmMcp.Integration.Sandbox.test_server(
+  installation_path,
+  %{capabilities: ["web-search"], security_required: true}
+)
+
+# Only servers with security_score > 70 are integrated
+if result.security_scan.score >= 70 do
+  VsmMcp.integrate_capability(result.server_info)
+end
+```
+
 ## 🔧 Configuration
 
 ```elixir
@@ -120,6 +148,20 @@ config :vsm_mcp,
     transport: :stdio,  # or :tcp, :websocket
     port: 4000,
     capabilities: ["vsm", "cybernetics", "autonomy"]
+  ],
+  
+  # Security configuration
+  security: [
+    sandbox_enabled: true,
+    package_whitelist: [
+      "@anthropic/sdk",
+      "express",
+      "axios",
+      "lodash"
+    ],
+    max_memory_mb: 512,
+    max_cpu_percent: 50,
+    min_security_score: 70
   ],
   
   # Consciousness settings
@@ -138,16 +180,32 @@ config :vsm_mcp,
 
 ## 🧪 Testing
 
+### Test Categories
+
 ```bash
 # Run all tests
 mix test
 
-# Run specific test
-mix test test/vsm_mcp/variety_test.exs
+# Run security tests
+mix test test/vsm_mcp/integration/security_test.exs
+mix test test/vsm_mcp/integration/sandbox_test.exs
+
+# Run parallel execution tests
+mix test test/vsm_mcp/integration/parallel_execution_test.exs
 
 # Run integration tests
 mix test --only integration
+
+# Run property-based tests
+mix test --only property
 ```
+
+### Test Coverage
+- **Unit Tests**: All core modules with >80% coverage
+- **Integration Tests**: End-to-end capability acquisition
+- **Security Tests**: Sandbox escaping, package validation
+- **Performance Tests**: Parallel execution, load testing
+- **Property Tests**: Security constraint validation
 
 ## 🤝 Contributing
 

@@ -9,30 +9,118 @@ defmodule VsmMcp.Integration.CapabilityMatcher do
   - Historical performance
   """
   
+  use GenServer
   require Logger
   
   @mcp_catalog_url "https://raw.githubusercontent.com/modelcontextprotocol/servers/main/README.md"
   @min_match_score 0.6
   
+  # Client API
+  
+  def start_link(opts \\ []) do
+    GenServer.start_link(__MODULE__, opts, name: __MODULE__)
+  end
+  
+  def get_all_capabilities do
+    GenServer.call(__MODULE__, :get_all_capabilities)
+  end
+  
+  def find_best_match(capability, servers) do
+    GenServer.call(__MODULE__, {:find_best_match, capability, servers})
+  end
+  
   @doc """
   Finds MCP servers that can fill a specific variety gap.
   """
   def find_matching_servers(variety_gap) do
-    Logger.info("Finding MCP servers for variety gap: #{inspect(variety_gap)}")
-    
-    with {:ok, catalog} <- fetch_mcp_catalog(),
-         {:ok, parsed_servers} <- parse_catalog(catalog),
-         scored_servers <- score_servers(parsed_servers, variety_gap),
-         filtered_servers <- filter_by_threshold(scored_servers) do
-      
-      {:ok, filtered_servers}
-    end
+    GenServer.call(__MODULE__, {:find_matching_servers, variety_gap})
   end
   
   @doc """
   Calculates match score between a server and variety gap.
   """
   def calculate_match_score(server, variety_gap) do
+    GenServer.call(__MODULE__, {:calculate_match_score, server, variety_gap})
+  end
+  
+  @doc """
+  Analyzes variety gap to extract matching criteria.
+  """
+  def analyze_variety_gap(variety_gap) do
+    GenServer.call(__MODULE__, {:analyze_variety_gap, variety_gap})
+  end
+  
+  # Server Callbacks
+  
+  @impl true
+  def init(_opts) do
+    state = %{
+      catalog_cache: %{},
+      match_history: [],
+      performance_metrics: %{}
+    }
+    {:ok, state}
+  end
+  
+  @impl true
+  def handle_call(:get_all_capabilities, _from, state) do
+    # Return base capabilities plus any discovered ones
+    base_capabilities = ["core", "base", "vsm_integration"]
+    catalog_capabilities = Map.keys(state.catalog_cache)
+    all_capabilities = Enum.uniq(base_capabilities ++ catalog_capabilities)
+    {:reply, all_capabilities, state}
+  end
+  
+  @impl true
+  def handle_call({:find_best_match, capability, servers}, _from, state) do
+    # Score each server for the capability
+    scored_servers = servers
+    |> Enum.map(fn server ->
+      score = calculate_capability_score(server, capability)
+      Map.put(server, :match_score, score)
+    end)
+    |> Enum.sort_by(& &1.match_score, :desc)
+    
+    # Return the best match
+    best_match = List.first(scored_servers)
+    
+    if best_match && best_match.match_score >= @min_match_score do
+      {:reply, {:ok, best_match}, state}
+    else
+      {:reply, {:error, :no_suitable_match}, state}
+    end
+  end
+
+  @impl true
+  def handle_call({:find_matching_servers, variety_gap}, _from, state) do
+    Logger.info("Finding MCP servers for variety gap: #{inspect(variety_gap)}")
+    
+    result = with {:ok, catalog} <- fetch_mcp_catalog(),
+                  {:ok, parsed_servers} <- parse_catalog(catalog),
+                  scored_servers <- score_servers(parsed_servers, variety_gap),
+                  filtered_servers <- filter_by_threshold(scored_servers) do
+      
+      {:ok, filtered_servers}
+    end
+    
+    {:reply, result, state}
+  end
+  
+  @impl true
+  def handle_call({:calculate_match_score, server, variety_gap}, _from, state) do
+    score = calculate_match_score_impl(server, variety_gap)
+    {:reply, score, state}
+  end
+  
+  @impl true
+  def handle_call({:analyze_variety_gap, variety_gap}, _from, state) do
+    analysis = analyze_variety_gap_impl(variety_gap)
+    {:reply, analysis, state}
+  end
+  
+  ## Private Functions
+  
+  defp calculate_match_score_impl(server, variety_gap) do
     scores = [
       keyword_match_score(server, variety_gap) * 0.3,
       capability_match_score(server, variety_gap) * 0.4,
@@ -43,10 +131,7 @@ defmodule VsmMcp.Integration.CapabilityMatcher do
     Enum.sum(scores)
   end
   
-  @doc """
-  Analyzes variety gap to extract matching criteria.
-  """
-  def analyze_variety_gap(variety_gap) do
+  defp analyze_variety_gap_impl(variety_gap) do
     %{
       keywords: extract_keywords(variety_gap),
       required_capabilities: extract_required_capabilities(variety_gap),
@@ -54,8 +139,6 @@ defmodule VsmMcp.Integration.CapabilityMatcher do
       priority: calculate_priority(variety_gap)
     }
   end
-  
-  ## Private Functions
   
   defp fetch_mcp_catalog do
     # In production, this would fetch from the actual catalog
@@ -271,7 +354,7 @@ defmodule VsmMcp.Integration.CapabilityMatcher do
     domain2 in Map.get(related_domains, domain1, [])
   end
   
-  defp quality_score(server) do
+  defp quality_score(_server) do
     # In production, this would consider:
     # - GitHub stars
     # - NPM downloads
@@ -337,5 +420,29 @@ defmodule VsmMcp.Integration.CapabilityMatcher do
       %{urgent: true} -> 0.9
       _ -> 0.5
     end
+  end
+  
+  defp calculate_capability_score(server, capability) do
+    # Score based on how well the server matches the capability
+    name_score = if String.contains?(String.downcase(server.name || ""), String.downcase(capability)) do
+      0.5
+    else
+      0.0
+    end
+    
+    desc_score = if server[:description] && String.contains?(String.downcase(server.description), String.downcase(capability)) do
+      0.3
+    else
+      0.0
+    end
+    
+    # Check if capability is listed
+    capability_score = if server[:capabilities] && capability in server.capabilities do
+      0.2
+    else
+      0.0
+    end
+    
+    name_score + desc_score + capability_score
   end
 end

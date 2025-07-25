@@ -5,10 +5,19 @@ defmodule VsmMcp.LLM.Integration do
   Provides interfaces for connecting to various LLM providers
   and using them for enhanced decision-making, analysis, and
   natural language understanding within the VSM framework.
+  
+  Now with enhanced resilience features:
+  - Circuit breakers per provider
+  - Automatic retry with exponential backoff
+  - Dead letter queue for failed requests
+  - Connection pooling and rate limiting
   """
   
   use GenServer
   require Logger
+  
+  alias VsmMcp.LLM.API
+  alias VsmMcp.Resilience.DeadLetterQueue
   
   @default_timeout 30_000
   
@@ -46,6 +55,27 @@ defmodule VsmMcp.LLM.Integration do
     GenServer.call(__MODULE__, {:generate_recommendations, variety_analysis}, @default_timeout)
   end
   
+  @doc """
+  Process an operation using LLM when internal variety is insufficient.
+  """
+  def process_operation(operation) do
+    GenServer.call(__MODULE__, {:process_operation, operation}, @default_timeout)
+  end
+  
+  @doc """
+  Transform data using LLM capabilities.
+  """
+  def transform_data(operation) do
+    GenServer.call(__MODULE__, {:transform_data, operation}, @default_timeout)
+  end
+  
+  @doc """
+  Generate code for a new capability.
+  """
+  def generate_capability(target) do
+    GenServer.call(__MODULE__, {:generate_capability, target}, @default_timeout)
+  end
+  
   # Server callbacks
   
   @impl true
@@ -53,10 +83,19 @@ defmodule VsmMcp.LLM.Integration do
     provider = Keyword.get(opts, :provider, :local)
     config = Keyword.get(opts, :config, %{})
     
+    # Initialize LLM API with resilience features
+    :ok = API.init(provider, config)
+    
     state = %{
       provider: provider,
       config: config,
-      client: init_client(provider, config)
+      client: init_client(provider, config),
+      stats: %{
+        total_requests: 0,
+        successful_requests: 0,
+        failed_requests: 0,
+        circuit_breaker_rejections: 0
+      }
     }
     
     {:ok, state}
@@ -112,6 +151,42 @@ defmodule VsmMcp.LLM.Integration do
     end
   end
   
+  @impl true
+  def handle_call({:process_operation, operation}, _from, state) do
+    prompt = build_operation_prompt(operation)
+    
+    case query_llm(state.client, prompt) do
+      {:ok, response} ->
+        {:reply, {:ok, response}, state}
+      {:error, reason} ->
+        {:reply, {:error, reason}, state}
+    end
+  end
+  
+  @impl true
+  def handle_call({:transform_data, operation}, _from, state) do
+    prompt = build_transform_prompt(operation)
+    
+    case query_llm(state.client, prompt) do
+      {:ok, response} ->
+        {:reply, {:ok, response}, state}
+      {:error, reason} ->
+        {:reply, {:error, reason}, state}
+    end
+  end
+  
+  @impl true
+  def handle_call({:generate_capability, target}, _from, state) do
+    prompt = build_capability_prompt(target)
+    
+    case query_llm(state.client, prompt) do
+      {:ok, code} ->
+        {:reply, {:ok, code}, state}
+      {:error, reason} ->
+        {:reply, {:error, reason}, state}
+    end
+  end
+  
   # Private functions
   
   defp init_client(:local, _config) do
@@ -144,63 +219,40 @@ defmodule VsmMcp.LLM.Integration do
   end
   
   defp query_llm(%{type: :openai} = client, prompt) do
-    headers = [
-      {"Authorization", "Bearer #{client.api_key}"},
-      {"Content-Type", "application/json"}
-    ]
-    
-    body = Jason.encode!(%{
+    body = %{
       model: client.model,
       messages: [
         %{role: "system", content: "You are an AI assistant helping with VSM (Viable System Model) analysis and decision-making."},
         %{role: "user", content: prompt}
       ],
       temperature: 0.7
-    })
+    }
     
-    case HTTPoison.post("#{client.base_url}/chat/completions", body, headers) do
-      {:ok, %{status_code: 200, body: resp_body}} ->
-        case Jason.decode(resp_body) do
-          {:ok, %{"choices" => [%{"message" => %{"content" => content}} | _]}} ->
-            {:ok, content}
-          _ ->
-            {:error, "Invalid response format"}
-        end
-      {:ok, %{status_code: status}} ->
-        {:error, "API error: #{status}"}
-      {:error, reason} ->
-        {:error, reason}
-    end
+    # Use the resilient API client
+    API.request(
+      :openai,
+      "/chat/completions",
+      Jason.encode!(body),
+      api_key: client.api_key
+    )
   end
   
   defp query_llm(%{type: :anthropic} = client, prompt) do
-    headers = [
-      {"x-api-key", client.api_key},
-      {"anthropic-version", "2023-06-01"},
-      {"Content-Type", "application/json"}
-    ]
-    
-    body = Jason.encode!(%{
+    body = %{
       model: client.model,
       messages: [
         %{role: "user", content: prompt}
       ],
       max_tokens: 1024
-    })
+    }
     
-    case HTTPoison.post("#{client.base_url}/messages", body, headers) do
-      {:ok, %{status_code: 200, body: resp_body}} ->
-        case Jason.decode(resp_body) do
-          {:ok, %{"content" => [%{"text" => text} | _]}} ->
-            {:ok, text}
-          _ ->
-            {:error, "Invalid response format"}
-        end
-      {:ok, %{status_code: status}} ->
-        {:error, "API error: #{status}"}
-      {:error, reason} ->
-        {:error, reason}
-    end
+    # Use the resilient API client
+    API.request(
+      :anthropic,
+      "/messages",
+      Jason.encode!(body),
+      api_key: client.api_key
+    )
   end
   
   defp build_decision_prompt(decision, context) do
@@ -320,5 +372,50 @@ defmodule VsmMcp.LLM.Integration do
     |> String.split("\n")
     |> Enum.filter(&String.contains?(&1, keyword))
     |> Enum.map(&String.trim/1)
+  end
+  
+  defp build_operation_prompt(operation) do
+    """
+    Process this operation for a Viable System Model:
+    
+    Operation: #{inspect(operation)}
+    
+    The VSM System 1 needs to process this operation but lacks internal variety to handle it.
+    Please provide a solution or approach to complete this operation.
+    
+    Focus on:
+    1. Understanding the operation requirements
+    2. Providing actionable steps or code
+    3. Identifying any additional resources needed
+    """
+  end
+  
+  defp build_transform_prompt(operation) do
+    """
+    Transform data for a VSM operation:
+    
+    Input: #{inspect(operation[:input] || operation.input)}
+    Desired Output: #{inspect(operation[:output] || operation.output)}
+    Context: #{inspect(Map.get(operation, :context, %{}))}
+    
+    Please provide the transformation logic or steps needed.
+    """
+  end
+  
+  defp build_capability_prompt(target) do
+    """
+    Generate Elixir code for a new VSM capability:
+    
+    Capability: #{target}
+    
+    Create a module that implements this capability for integration into the VSM System 1.
+    The module should:
+    1. Follow Elixir/OTP conventions
+    2. Include necessary functions for the capability
+    3. Be compatible with the VSM architecture
+    4. Include documentation
+    
+    Return complete, compilable Elixir code.
+    """
   end
 end

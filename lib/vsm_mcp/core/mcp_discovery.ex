@@ -33,6 +33,10 @@ defmodule VsmMcp.Core.MCPDiscovery do
     GenServer.call(__MODULE__, :list_installed)
   end
   
+  def discover_servers(search_terms) do
+    GenServer.call(__MODULE__, {:discover_servers, search_terms}, 30_000)
+  end
+  
   # Server Callbacks
   
   @impl true
@@ -112,13 +116,43 @@ defmodule VsmMcp.Core.MCPDiscovery do
     {:reply, {:ok, state.installed_servers}, state}
   end
   
+  @impl true
+  def handle_call({:discover_servers, search_terms}, _from, state) do
+    Logger.info("🔍 Discovering MCP servers for: #{inspect(search_terms)}")
+    
+    # Use real NPM search instead of returning empty list
+    servers = search_terms
+    |> Enum.flat_map(fn term ->
+      # Search NPM for real MCP servers
+      case search_npm_for_mcp(term) do
+        {:ok, results} -> results
+        _ -> []
+      end
+    end)
+    |> Enum.uniq_by(& &1.name)
+    
+    Logger.info("📦 Found #{length(servers)} MCP servers")
+    
+    new_state = update_metrics(state, :searches_performed)
+    {:reply, {:ok, servers}, new_state}
+  end
+  
   # Private Functions
   
   defp search_for_capabilities(capabilities, state) do
     capabilities
     |> Enum.flat_map(fn capability ->
-      search_terms = capability.search_terms
-      perform_search(search_terms, state)
+      # Map generic capability to real MCP package names
+      real_packages = case capability do
+        %{type: type} when is_binary(type) ->
+          VsmMcp.Core.CapabilityMapping.map_capability_to_packages(type)
+        %{search_terms: terms} when is_list(terms) ->
+          VsmMcp.Core.CapabilityMapping.search_real_packages(terms)
+        _ ->
+          capability.search_terms
+      end
+      
+      perform_search(real_packages, state)
     end)
     |> Enum.uniq_by(& &1.name)
   end
@@ -155,8 +189,61 @@ defmodule VsmMcp.Core.MCPDiscovery do
   end
   
   defp search_npm(search_terms) do
-    query = Enum.join(search_terms, "+")
-    url = "#{@npm_registry_url}/-/v1/search?text=mcp+#{query}&size=10"
+    # Search for exact package names first, then fallback to keyword search
+    results = search_terms
+    |> Enum.flat_map(fn term ->
+      # Try exact package name first
+      exact_results = search_npm_exact(term)
+      
+      # If no exact match, try keyword search
+      if Enum.empty?(exact_results) do
+        search_npm_keyword(term)
+      else
+        exact_results
+      end
+    end)
+    |> Enum.uniq_by(& &1.name)
+    
+    results
+  end
+  
+  defp search_npm_exact(package_name) do
+    # Direct package lookup
+    url = "#{@npm_registry_url}/#{URI.encode(package_name)}"
+    
+    case HTTPoison.get(url) do
+      {:ok, %{status_code: 200, body: body}} ->
+        case Jason.decode(body) do
+          {:ok, package_data} ->
+            # Get latest version
+            latest_version = package_data["dist-tags"]["latest"] || "1.0.0"
+            version_data = package_data["versions"][latest_version] || %{}
+            
+            [%{
+              name: package_data["name"],
+              version: latest_version,
+              description: version_data["description"] || package_data["description"],
+              source: :npm,
+              install_command: "npm install #{package_data["name"]}",
+              relevance_score: 1.0,  # Exact match gets highest score
+              capabilities: extract_capabilities_from_package(version_data),
+              author: get_in(version_data, ["author", "name"]),
+              repository: get_in(version_data, ["repository", "url"])
+            }]
+          
+          _ ->
+            []
+        end
+      
+      _ ->
+        []
+    end
+  end
+  
+  defp search_npm_keyword(search_term) do
+    # Fallback to keyword search
+    query = URI.encode(search_term)
+    url = "#{@npm_registry_url}/-/v1/search?text=#{query}&size=10"
     
     case HTTPoison.get(url) do
       {:ok, %{status_code: 200, body: body}} ->
@@ -225,6 +312,45 @@ defmodule VsmMcp.Core.MCPDiscovery do
     capability_keywords
     |> Enum.filter(&String.contains?(description, &1))
     |> Enum.map(&String.to_atom/1)
+  end
+  
+  defp extract_capabilities_from_package(package_data) do
+    # Extract capabilities from package metadata
+    description = package_data["description"] || ""
+    keywords = package_data["keywords"] || []
+    name = package_data["name"] || ""
+    
+    # Start with description-based capabilities
+    desc_capabilities = extract_capabilities_from_description(description)
+    
+    # Add capabilities based on package name patterns
+    name_capabilities = cond do
+      String.contains?(name, "filesystem") -> [:filesystem, :file_operations]
+      String.contains?(name, "github") -> [:github, :version_control, :api]
+      String.contains?(name, "git") -> [:git, :version_control]
+      String.contains?(name, "database") or String.contains?(name, "sql") -> [:database, :data_transformation]
+      String.contains?(name, "postgres") -> [:postgres, :database, :sql]
+      String.contains?(name, "sqlite") -> [:sqlite, :database, :sql]
+      String.contains?(name, "memory") -> [:memory, :caching, :storage]
+      String.contains?(name, "slack") -> [:slack, :messaging, :api]
+      String.contains?(name, "docker") -> [:docker, :containerization, :parallel_processing]
+      String.contains?(name, "kubernetes") or String.contains?(name, "k8s") -> [:kubernetes, :containerization, :orchestration]
+      String.contains?(name, "aws") -> [:aws, :cloud, :api]
+      String.contains?(name, "search") -> [:search, :api]
+      true -> []
+    end
+    
+    # Add keyword-based capabilities
+    keyword_capabilities = keywords
+    |> Enum.map(&String.downcase/1)
+    |> Enum.filter(fn kw -> 
+      kw in ["file", "database", "api", "web", "search", "memory", "cache", "cloud", "messaging"]
+    end)
+    |> Enum.map(&String.to_atom/1)
+    
+    # Combine and deduplicate
+    (desc_capabilities ++ name_capabilities ++ keyword_capabilities)
+    |> Enum.uniq()
   end
   
   defp select_best_servers(search_results, required_capabilities) do
@@ -350,12 +476,52 @@ defmodule VsmMcp.Core.MCPDiscovery do
   end
   
   defp update_metrics(state, metric, count \\ 1) do
-    Map.update_in(state, [:metrics, metric], &(&1 + count))
+    update_in(state, [:metrics, metric], &(&1 + count))
   end
   
   @impl true
   def handle_info({:clear_cache, cache_key}, state) do
     new_cache = Map.delete(state.discovery_cache, cache_key)
     {:noreply, Map.put(state, :discovery_cache, new_cache)}
+  end
+  
+  # Search NPM for MCP servers without HTTPoison
+  defp search_npm_for_mcp(search_term) do
+    # Use curl instead of HTTPoison
+    url = "https://registry.npmjs.org/-/v1/search?text=#{URI.encode(search_term)}%20mcp&size=10"
+    
+    case System.cmd("curl", ["-s", url]) do
+      {output, 0} ->
+        case Jason.decode(output) do
+          {:ok, %{"objects" => objects}} ->
+            servers = objects
+            |> Enum.filter(fn obj ->
+              name = get_in(obj, ["package", "name"]) || ""
+              desc = get_in(obj, ["package", "description"]) || ""
+              String.contains?(String.downcase(name), "mcp") ||
+              String.contains?(String.downcase(desc), "mcp") ||
+              String.contains?(String.downcase(desc), "model context protocol")
+            end)
+            |> Enum.map(fn obj ->
+              pkg = obj["package"]
+              %{
+                name: pkg["name"],
+                description: pkg["description"] || "",
+                version: pkg["version"],
+                package: pkg["name"],
+                capabilities: extract_capabilities_from_description(pkg["description"] || ""),
+                relevance_score: get_in(obj, ["score", "final"]) || 0.5
+              }
+            end)
+            
+            {:ok, servers}
+          
+          _ ->
+            {:error, "Failed to parse NPM response"}
+        end
+      
+      _ ->
+        {:error, "Failed to search NPM"}
+    end
   end
 end

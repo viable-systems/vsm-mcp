@@ -1,12 +1,47 @@
 defmodule VsmMcp.Integration.DynamicSpawner do
   @moduledoc """
-  Dynamically spawns GenServer processes for integrated MCP capabilities.
+  Dynamically spawns and manages GenServer processes for integrated MCP capabilities.
   
-  Features:
-  - Dynamic process creation
-  - Supervision tree integration
-  - Process registry
-  - Health monitoring
+  This module acts as a DynamicSupervisor that creates, monitors, and manages
+  processes representing MCP server capabilities. Each capability runs in its
+  own isolated process with health monitoring and automatic restart.
+  
+  ## Architecture
+  
+  The spawner creates a supervision tree where each MCP capability runs as a
+  supervised child process. This ensures fault tolerance and isolation between
+  different capabilities.
+  
+  ## Features
+  
+  - **Dynamic Process Creation**: Spawn processes on-demand based on variety gaps
+  - **Supervision Tree Integration**: Automatic restart with backoff strategies
+  - **Process Registry**: Named processes for easy discovery and communication
+  - **Health Monitoring**: Continuous health checks with configurable thresholds
+  - **Resource Management**: CPU and memory limits per capability
+  - **Graceful Shutdown**: Clean termination with state preservation
+  
+  ## Process Lifecycle
+  
+  1. **Spawn**: Create process with verified capability configuration
+  2. **Register**: Add to process registry with metadata
+  3. **Monitor**: Start health checks and performance tracking
+  4. **Maintain**: Handle restarts, updates, and resource management
+  5. **Terminate**: Clean shutdown with state preservation
+  
+  ## Examples
+  
+      # Spawn a new capability
+      iex> DynamicSpawner.spawn_capability(adapter, %{name: "web-search", ...})
+      {:ok, #PID<0.123.0>}
+      
+      # List active capabilities
+      iex> DynamicSpawner.list_capabilities()
+      [%{id: "web-search", pid: #PID<0.123.0>, health: :healthy}]
+      
+      # Terminate a capability
+      iex> DynamicSpawner.terminate_capability("web-search")
+      :ok
   """
   
   use DynamicSupervisor
@@ -16,14 +51,45 @@ defmodule VsmMcp.Integration.DynamicSpawner do
   
   @doc """
   Starts the dynamic spawner supervisor.
+  
+  ## Parameters
+  
+  - `init_arg` - Initialization arguments for the supervisor
+  
+  ## Returns
+  
+  - `{:ok, pid}` - Supervisor started successfully
+  - `{:error, reason}` - Startup failure
   """
+  @spec start_link(term()) :: Supervisor.on_start()
   def start_link(init_arg) do
     DynamicSupervisor.start_link(__MODULE__, init_arg, name: __MODULE__)
   end
   
   @doc """
-  Spawns a new capability process.
+  Spawns a new capability process with the given adapter and configuration.
+  
+  ## Parameters
+  
+  - `adapter` - Protocol adapter for MCP communication
+  - `verified_capability` - Map containing:
+    - `:name` - Capability name
+    - `:server_info` - MCP server details
+    - `:variety_gap` - Gap this capability fills
+    - `:config` - Additional configuration
+  
+  ## Returns
+  
+  - `{:ok, pid}` - Process spawned successfully
+  - `{:error, reason}` - Spawn failure
+  
+  ## Side Effects
+  
+  - Registers process in capability registry
+  - Starts health monitoring
+  - Emits telemetry events
   """
+  @spec spawn_capability(module(), map()) :: {:ok, pid()} | {:error, term()}
   def spawn_capability(adapter, verified_capability) do
     child_spec = build_child_spec(adapter, verified_capability)
     
@@ -40,8 +106,26 @@ defmodule VsmMcp.Integration.DynamicSpawner do
   end
   
   @doc """
-  Terminates a capability process.
+  Terminates a capability process gracefully.
+  
+  ## Parameters
+  
+  - `capability_id` - Unique identifier of the capability
+  
+  ## Returns
+  
+  - `:ok` - Process terminated successfully
+  - `{:error, :process_not_found}` - No process with given ID
+  
+  ## Termination Process
+  
+  1. Sends shutdown signal to process
+  2. Waits for graceful termination (5s timeout)
+  3. Forces termination if needed
+  4. Cleans up registry entries
+  5. Notifies health monitor
   """
+  @spec terminate_capability(String.t()) :: :ok | {:error, atom()}
   def terminate_capability(capability_id) do
     case lookup_process(capability_id) do
       {:ok, pid} ->
@@ -54,8 +138,33 @@ defmodule VsmMcp.Integration.DynamicSpawner do
   end
   
   @doc """
-  Lists all active capability processes.
+  Lists all active capability processes with their metadata.
+  
+  ## Returns
+  
+  List of capability maps containing:
+  - `:id` - Capability identifier
+  - `:pid` - Process ID
+  - `:name` - Capability name
+  - `:health` - Current health status
+  - `:uptime` - Time since spawn
+  - `:memory` - Memory usage in bytes
+  
+  ## Example
+  
+      iex> DynamicSpawner.list_capabilities()
+      [
+        %{
+          id: "web-search-123",
+          pid: #PID<0.234.0>,
+          name: "web-search",
+          health: :healthy,
+          uptime: 3600,
+          memory: 12582912
+        }
+      ]
   """
+  @spec list_capabilities() :: [map()]
   def list_capabilities do
     DynamicSupervisor.which_children(__MODULE__)
     |> Enum.map(fn {_, pid, _, _} ->

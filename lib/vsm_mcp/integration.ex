@@ -46,6 +46,32 @@ defmodule VsmMcp.Integration do
   def remove_capability(capability_id) do
     GenServer.call(__MODULE__, {:remove, capability_id})
   end
+
+  @doc """
+  Integrate multiple capabilities at once - THE AUTONOMOUS FUNCTION!
+  """
+  def integrate_capabilities(capability_requirements) when is_list(capability_requirements) do
+    Logger.info("🚀 Autonomous capability integration started for: #{inspect(capability_requirements)}")
+    
+    results = Enum.map(capability_requirements, fn capability ->
+      case integrate_capability(capability) do
+        {:ok, result} -> 
+          Logger.info("✅ Successfully integrated: #{capability}")
+          {capability, {:ok, result}}
+        {:error, reason} -> 
+          Logger.error("❌ Failed to integrate #{capability}: #{inspect(reason)}")
+          {capability, {:error, reason}}
+      end
+    end)
+    
+    successful = Enum.filter(results, fn {_, result} -> match?({:ok, _}, result) end)
+    
+    if length(successful) > 0 do
+      {:ok, Enum.into(results, %{})}
+    else
+      {:error, :no_capabilities_integrated}
+    end
+  end
   
   ## Callbacks
   

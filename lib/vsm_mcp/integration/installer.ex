@@ -1,12 +1,44 @@
 defmodule VsmMcp.Integration.Installer do
   @moduledoc """
-  Handles installation of MCP servers from various sources.
+  Handles the secure installation of MCP servers from various sources.
   
-  Supports:
-  - NPM packages
-  - Git repositories
-  - Local directories
-  - Pre-built binaries
+  This module is responsible for safely downloading, verifying, and installing
+  MCP servers into the VSM-MCP ecosystem. It ensures all installations follow
+  security best practices and are properly isolated.
+  
+  ## Features
+  
+  - Multiple source support (npm, GitHub, local paths, binaries)
+  - Parallel installation with race condition prevention
+  - Automatic dependency resolution
+  - Rollback on failure with transaction support
+  - Progress tracking and reporting
+  - Security validation with package whitelisting
+  
+  ## Installation Sources
+  
+  - **NPM packages**: Only whitelisted packages allowed
+  - **Git repositories**: Cloned and verified
+  - **Local directories**: Copied with permission checks
+  - **Pre-built binaries**: Downloaded with checksum validation
+  
+  ## Security Measures
+  
+  - Package whitelist enforcement
+  - Dangerous dependency blocking
+  - File permission validation
+  - Network isolation during setup
+  - Sandbox execution for scripts
+  
+  ## Examples
+  
+      # Install from npm
+      iex> Installer.install_server(%{source: "npm:@anthropic/mcp-server"})
+      {:ok, "/opt/vsm/mcp_servers/anthropic-mcp-server"}
+      
+      # Install from GitHub with version
+      iex> Installer.install_server(%{source: "github:org/repo", version: "v1.0.0"})
+      {:ok, "/opt/vsm/mcp_servers/repo-v1.0.0"}
   """
   
   require Logger
@@ -17,7 +49,26 @@ defmodule VsmMcp.Integration.Installer do
   
   @doc """
   Installs an MCP server based on its source type.
+  
+  ## Parameters
+  
+  - `server_config` - Map containing:
+    - `:source` - Installation source (npm:package, github:owner/repo, etc.)
+    - `:name` - Server name
+    - `:version` - Optional version specification
+    - `:force` - Force reinstallation if already exists
+  
+  ## Returns
+  
+  - `{:ok, installation_path}` - Success with installation directory
+  - `{:error, reason}` - Installation failure
+  
+  ## Examples
+  
+      iex> install_server(%{source: "npm:express", name: "express-server"})
+      {:ok, "/opt/vsm/mcp_servers/express-server"}
   """
+  @spec install_server(map()) :: {:ok, String.t()} | {:error, term()}
   def install_server(server_config) do
     installation_path = get_installation_path(server_config)
     
@@ -31,8 +82,18 @@ defmodule VsmMcp.Integration.Installer do
   end
   
   @doc """
-  Uninstalls an MCP server.
+  Uninstalls an MCP server and removes all associated files.
+  
+  ## Parameters
+  
+  - `installation_path` - Path to the installed server
+  
+  ## Returns
+  
+  - `:ok` - Successful uninstallation
+  - `{:error, {:uninstall_failed, reason}}` - Uninstallation failure
   """
+  @spec uninstall_server(String.t()) :: :ok | {:error, term()}
   def uninstall_server(installation_path) do
     Logger.info("Uninstalling server at: #{installation_path}")
     
@@ -43,8 +104,26 @@ defmodule VsmMcp.Integration.Installer do
   end
   
   @doc """
-  Verifies server installation.
+  Verifies that a server installation is complete and valid.
+  
+  ## Parameters
+  
+  - `installation_path` - Path to verify
+  
+  ## Returns
+  
+  - `{:ok, info}` - Valid installation with server info
+  - `{:error, :not_found}` - Path doesn't exist
+  - `{:error, :incomplete_installation}` - Missing required files
+  
+  ## Verification Checks
+  
+  1. Path existence
+  2. Required files (package.json, start script)
+  3. Dependency installation
+  4. Configuration validity
   """
+  @spec verify_installation(String.t()) :: {:ok, map()} | {:error, atom()}
   def verify_installation(installation_path) do
     cond do
       not File.exists?(installation_path) ->

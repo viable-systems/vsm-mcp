@@ -62,7 +62,7 @@ defmodule VsmMcp.MCP.Transports.Tcp do
         spawn_link(fn -> accept_loop(listen_socket, self()) end)
         {:reply, :ok, %{state | socket: listen_socket, mode: :server, port: port}}
 
-      {:error, reason} = error ->
+      {:error, _reason} = error ->
         {:reply, error, state}
     end
   end
@@ -73,7 +73,7 @@ defmodule VsmMcp.MCP.Transports.Tcp do
       {:ok, socket} ->
         {:reply, :ok, %{state | socket: socket, host: host, port: port}}
 
-      {:error, reason} = error ->
+      {:error, _reason} = error ->
         {:reply, error, state}
     end
   end
@@ -84,14 +84,14 @@ defmodule VsmMcp.MCP.Transports.Tcp do
       # Add newline delimiter
       :gen_tcp.send(state.socket, message <> "\n")
     else
-      Logger.warn("Attempted to send message without active socket")
+      Logger.warning("Attempted to send message without active socket")
     end
 
     {:noreply, state}
   end
 
   @impl true
-  def handle_info({:tcp, socket, data}, state) do
+  def handle_info({:tcp, _socket, data}, state) do
     # Accumulate data in buffer
     buffer = state.buffer <> data
 
@@ -107,13 +107,13 @@ defmodule VsmMcp.MCP.Transports.Tcp do
   end
 
   @impl true
-  def handle_info({:tcp_closed, socket}, state) do
+  def handle_info({:tcp_closed, _socket}, state) do
     Logger.info("TCP connection closed")
     {:stop, :normal, state}
   end
 
   @impl true
-  def handle_info({:tcp_error, socket, reason}, state) do
+  def handle_info({:tcp_error, _socket, reason}, state) do
     Logger.error("TCP error: #{inspect(reason)}")
     {:stop, reason, state}
   end

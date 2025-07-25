@@ -73,7 +73,7 @@ defmodule VsmMcp.Integrations.PatternEngineIntegration do
     
     # Alert System 3 if critical anomalies found
     if Enum.any?(anomalies, & &1.severity == :critical) do
-      System3.handle_anomaly_alert(anomalies)
+      VsmMcp.Systems.System3.handle_anomaly_alert(anomalies)
     end
     
     new_state = update_metrics(state, :anomalies_detected, length(anomalies))
@@ -90,17 +90,25 @@ defmodule VsmMcp.Integrations.PatternEngineIntegration do
   
   @impl true
   def handle_call({:train_model, training_data, model_type}, _from, state) do
-    case train_pattern_model(training_data, model_type, state) do
-      {:ok, model} ->
-        new_state = state
-          |> Map.update!(:models, &Map.put(&1, model_type, model))
-          |> update_metrics(:models_trained)
-        
-        {:reply, {:ok, model}, new_state}
-      
-      {:error, reason} = error ->
-        {:reply, error, state}
-    end
+    {:ok, model} = train_pattern_model(training_data, model_type, state)
+    
+    new_state = state
+      |> Map.update!(:models, &Map.put(&1, model_type, model))
+      |> update_metrics(:models_trained)
+    
+    {:reply, {:ok, model}, new_state}
+  end
+  
+  @impl true
+  def handle_call(:get_report, _from, state) do
+    report = %{
+      metrics: state.metrics,
+      active_models: Map.keys(state.models),
+      cached_patterns: map_size(state.pattern_cache),
+      status: :operational
+    }
+    
+    {:reply, report, state}
   end
   
   @impl true
@@ -146,8 +154,12 @@ defmodule VsmMcp.Integrations.PatternEngineIntegration do
   defp perform_pattern_analysis(data, pattern_type, state) do
     case state.pattern_engine do
       {:ok, :connected} ->
-        # Use actual pattern engine
-        VsmPatternEngine.analyze(data, pattern_type)
+        # Use actual pattern engine if available
+        if Code.ensure_loaded?(VsmPatternEngine) do
+          VsmPatternEngine.analyze(data, pattern_type)
+        else
+          fallback_pattern_analysis(data, pattern_type)
+        end
       
       {:ok, :fallback} ->
         # Use simplified pattern analysis
@@ -228,7 +240,7 @@ defmodule VsmMcp.Integrations.PatternEngineIntegration do
     |> Enum.filter(&is_number/1)
   end
   
-  defp generate_recommendations(pattern_type, data) do
+  defp generate_recommendations(pattern_type, _data) do
     case pattern_type do
       :system_health ->
         ["Monitor resource utilization", "Review recent changes", "Check system logs"]
@@ -244,7 +256,7 @@ defmodule VsmMcp.Integrations.PatternEngineIntegration do
     end
   end
   
-  defp detect_anomalies_in_data(data, threshold, state) do
+  defp detect_anomalies_in_data(data, threshold, _state) do
     # Simple anomaly detection using statistical methods
     values = extract_numeric_values(data)
     
@@ -287,7 +299,7 @@ defmodule VsmMcp.Integrations.PatternEngineIntegration do
     end
   end
   
-  defp generate_predictions(historical_data, horizon, state) do
+  defp generate_predictions(historical_data, horizon, _state) do
     # Simple linear prediction
     values = extract_numeric_values(historical_data)
     
@@ -330,7 +342,7 @@ defmodule VsmMcp.Integrations.PatternEngineIntegration do
     if denominator > 0, do: numerator / denominator, else: 0
   end
   
-  defp train_pattern_model(training_data, model_type, state) do
+  defp train_pattern_model(training_data, model_type, _state) do
     # Simplified model training
     model = %{
       type: model_type,
@@ -403,7 +415,7 @@ defmodule VsmMcp.Integrations.PatternEngineIntegration do
   end
   
   defp update_metrics(state, metric, count \\ 1) do
-    Map.update_in(state, [:metrics, metric], &(&1 + count))
+    update_in(state, [:metrics, metric], &(&1 + count))
   end
   
   @doc """
@@ -411,17 +423,5 @@ defmodule VsmMcp.Integrations.PatternEngineIntegration do
   """
   def get_pattern_report do
     GenServer.call(__MODULE__, :get_report)
-  end
-  
-  @impl true
-  def handle_call(:get_report, _from, state) do
-    report = %{
-      metrics: state.metrics,
-      active_models: Map.keys(state.models),
-      cached_patterns: map_size(state.pattern_cache),
-      status: :operational
-    }
-    
-    {:reply, report, state}
   end
 end

@@ -4,6 +4,7 @@ defmodule VsmMcp.MCP.Protocol.Handler do
   """
 
   alias VsmMcp.MCP.Protocol.{JsonRpc, Messages}
+  alias JsonRpc.{Request, Response, Notification, Batch}
   require Logger
 
   @behaviour GenServer
@@ -15,8 +16,11 @@ defmodule VsmMcp.MCP.Protocol.Handler do
     :handlers,
     :subscriptions,
     :pending_requests,
-    :next_id
+    :next_id,
+    :request_timeout
   ]
+
+  @default_timeout 30_000
 
   # Client API
 
@@ -36,6 +40,14 @@ defmodule VsmMcp.MCP.Protocol.Handler do
 
   @impl true
   def init(opts) do
+    # Start the ID generator if not already started
+    case Process.whereis(JsonRpc.IdGenerator) do
+      nil -> 
+        {:ok, _} = JsonRpc.IdGenerator.start_link([])
+      _ -> 
+        :ok
+    end
+
     state = %__MODULE__{
       transport: opts[:transport],
       state: :uninitialized,
@@ -43,7 +55,8 @@ defmodule VsmMcp.MCP.Protocol.Handler do
       handlers: opts[:handlers] || %{},
       subscriptions: %{},
       pending_requests: %{},
-      next_id: 1
+      next_id: 1,
+      request_timeout: opts[:timeout] || @default_timeout
     }
 
     {:ok, state}
@@ -51,32 +64,45 @@ defmodule VsmMcp.MCP.Protocol.Handler do
 
   @impl true
   def handle_call({:send_request, method, params}, from, state) do
-    id = state.next_id
-    request = JsonRpc.request(method, params, id)
-
-    case JsonRpc.encode(request) do
+    # Build request with auto-generated ID
+    request = JsonRpc.build_jsonrpc_request(method, params)
+    
+    case JsonRpc.encode_jsonrpc_message(request) do
       {:ok, json} ->
+        # Send the message
         send(state.transport, {:send, json})
         
-        new_state = %{state |
-          pending_requests: Map.put(state.pending_requests, id, from),
-          next_id: id + 1
+        # Store pending request with timeout
+        request_info = %{
+          from: from,
+          timestamp: System.monotonic_time(:millisecond),
+          method: method,
+          timeout: state.request_timeout
         }
+        
+        new_state = %{state |
+          pending_requests: Map.put(state.pending_requests, request.id, request_info)
+        }
+        
+        # Set up timeout
+        Process.send_after(self(), {:request_timeout, request.id}, state.request_timeout)
         
         {:noreply, new_state}
 
       {:error, reason} ->
+        Logger.error("Failed to encode request: #{inspect(reason)}")
         {:reply, {:error, reason}, state}
     end
   end
 
   @impl true
   def handle_cast({:send_notification, method, params}, state) do
-    notification = JsonRpc.notification(method, params)
+    notification = JsonRpc.build_jsonrpc_notification(method, params)
 
-    case JsonRpc.encode(notification) do
+    case JsonRpc.encode_jsonrpc_message(notification) do
       {:ok, json} ->
         send(state.transport, {:send, json})
+        Logger.debug("Sent notification: #{method}")
 
       {:error, reason} ->
         Logger.error("Failed to encode notification: #{inspect(reason)}")
@@ -87,62 +113,86 @@ defmodule VsmMcp.MCP.Protocol.Handler do
 
   @impl true
   def handle_info({:message, json_string}, state) do
-    case JsonRpc.parse(json_string) do
-      {:ok, %JsonRpc{} = request} ->
+    case JsonRpc.parse_jsonrpc_message(json_string) do
+      {:ok, %Request{} = request} ->
         handle_request(request, state)
 
-      {:ok, %JsonRpc.Response{} = response} ->
+      {:ok, %Response{} = response} ->
         handle_response(response, state)
+
+      {:ok, %Notification{} = notification} ->
+        handle_notification(notification, state)
+
+      {:ok, %Batch{messages: messages}} ->
+        handle_batch(messages, state)
 
       {:error, reason} ->
         Logger.error("Failed to parse message: #{inspect(reason)}")
+        # Send parse error response if we can extract an ID
+        maybe_send_parse_error(json_string, state)
         {:noreply, state}
+    end
+  end
+
+  @impl true
+  def handle_info({:request_timeout, request_id}, state) do
+    case Map.get(state.pending_requests, request_id) do
+      nil ->
+        # Request already completed
+        {:noreply, state}
+
+      %{from: from} ->
+        Logger.warn("Request timeout for ID: #{request_id}")
+        GenServer.reply(from, {:error, :timeout})
+        
+        new_state = %{state | 
+          pending_requests: Map.delete(state.pending_requests, request_id)
+        }
+        {:noreply, new_state}
     end
   end
 
   # Request handling
 
-  defp handle_request(%JsonRpc{method: method, params: params, id: id} = request, state) do
-    Logger.debug("Handling request: #{method}")
+  defp handle_request(%Request{method: method, params: params, id: id}, state) do
+    Logger.debug("Handling request: #{method} (ID: #{id})")
 
     result =
       case route_request(method, params, state) do
         {:ok, result} ->
-          JsonRpc.success_response(result, id)
+          JsonRpc.build_jsonrpc_response(result, id)
 
         {:error, {code, message, data}} ->
-          JsonRpc.error_response(code, message, id, data)
+          JsonRpc.build_jsonrpc_error(code, message, id, data)
 
         {:error, reason} ->
+          Logger.error("Request processing error: #{inspect(reason)}")
           JsonRpc.internal_error(id, inspect(reason))
       end
 
-    case JsonRpc.encode(result) do
+    case JsonRpc.encode_jsonrpc_message(result) do
       {:ok, json} ->
         send(state.transport, {:send, json})
+        Logger.debug("Sent response for #{method} (ID: #{id})")
 
       {:error, reason} ->
         Logger.error("Failed to encode response: #{inspect(reason)}")
+        # Try to send internal error as fallback
+        fallback = JsonRpc.internal_error(id, "Response encoding failed")
+        case JsonRpc.encode_jsonrpc_message(fallback) do
+          {:ok, fallback_json} ->
+            send(state.transport, {:send, fallback_json})
+          {:error, _} ->
+            Logger.error("Cannot send any response for request #{id}")
+        end
     end
-
-    # Handle notifications (no ID means notification)
-    state =
-      if is_nil(id) do
-        handle_notification(method, params, state)
-      else
-        state
-      end
 
     {:noreply, state}
   end
 
-  defp handle_response(%JsonRpc.Response{id: id} = response, state) do
-    case Map.pop(state.pending_requests, id) do
-      {nil, _} ->
-        Logger.warn("Received response for unknown request ID: #{id}")
-        {:noreply, state}
-
-      {from, pending_requests} ->
+  defp handle_response(%Response{id: id} = response, state) do
+    case JsonRpc.correlate_response(response, state.pending_requests) do
+      {:ok, {%{from: from}, remaining_requests}} ->
         result =
           if response.error do
             {:error, response.error}
@@ -151,8 +201,54 @@ defmodule VsmMcp.MCP.Protocol.Handler do
           end
 
         GenServer.reply(from, result)
-        {:noreply, %{state | pending_requests: pending_requests}}
+        Logger.debug("Correlated response for request ID: #{id}")
+        {:noreply, %{state | pending_requests: remaining_requests}}
+
+      {:error, reason} ->
+        Logger.warn("Failed to correlate response: #{inspect(reason)}")
+        {:noreply, state}
     end
+  end
+
+  # Notification handling
+  defp handle_notification(%Notification{method: method, params: params}, state) do
+    Logger.debug("Handling notification: #{method}")
+    new_state = process_notification(method, params, state)
+    {:noreply, new_state}
+  end
+
+  # Batch handling
+  defp handle_batch(messages, state) do
+    Logger.debug("Handling batch with #{length(messages)} messages")
+    
+    responses = 
+      Enum.map(messages, fn message ->
+        case message do
+          %Request{} = request ->
+            # Process request and return response (synchronously for batch)
+            process_batch_request(request, state)
+          
+          %Notification{} = notification ->
+            # Process notification (no response)
+            process_notification(notification.method, notification.params, state)
+            nil
+        end
+      end)
+      |> Enum.filter(& &1 != nil)
+
+    # Send batch response if there are any responses
+    if length(responses) > 0 do
+      batch_response = %Batch{messages: responses}
+      case JsonRpc.encode_jsonrpc_message(batch_response) do
+        {:ok, json} ->
+          send(state.transport, {:send, json})
+          Logger.debug("Sent batch response with #{length(responses)} responses")
+        {:error, reason} ->
+          Logger.error("Failed to encode batch response: #{inspect(reason)}")
+      end
+    end
+
+    {:noreply, state}
   end
 
   # Request routing
@@ -202,24 +298,88 @@ defmodule VsmMcp.MCP.Protocol.Handler do
   end
 
   defp route_request(method, _params, _state) do
-    {:error, {JsonRpc.method_not_found(method), "Method not found", %{method: method}}}
+    Logger.warn("Unknown method: #{method}")
+    {:error, {-32601, "Method not found", %{method: method}}}
   end
 
-  # Notification handling
+  # Notification processing
 
-  defp handle_notification("notifications/cancelled", params, state) do
+  defp process_notification("notifications/cancelled", params, state) do
     Logger.info("Received cancellation: #{inspect(params)}")
-    state
+    # Handle request cancellation if needed
+    case Map.get(params, "requestId") do
+      nil -> state
+      request_id ->
+        # Cancel pending request if exists
+        case Map.get(state.pending_requests, request_id) do
+          nil -> state
+          %{from: from} ->
+            GenServer.reply(from, {:error, :cancelled})
+            %{state | pending_requests: Map.delete(state.pending_requests, request_id)}
+        end
+    end
   end
 
-  defp handle_notification("notifications/progress", params, state) do
+  defp process_notification("notifications/progress", params, state) do
     Logger.debug("Progress update: #{inspect(params)}")
+    # Forward progress updates to handlers if needed
     state
   end
 
-  defp handle_notification(method, params, state) do
+  defp process_notification("notifications/resources/updated", params, state) do
+    Logger.debug("Resource updated: #{inspect(params)}")
+    # Handle resource update notifications
+    state
+  end
+
+  defp process_notification("notifications/resources/list_changed", _params, state) do
+    Logger.debug("Resource list changed")
+    # Handle resource list changes
+    state
+  end
+
+  defp process_notification(method, params, state) do
     Logger.debug("Unhandled notification: #{method} with params: #{inspect(params)}")
     state
+  end
+
+  # Helper functions
+
+  defp process_batch_request(%Request{method: method, params: params, id: id}, state) do
+    case route_request(method, params, state) do
+      {:ok, result} ->
+        JsonRpc.build_jsonrpc_response(result, id)
+
+      {:error, {code, message, data}} ->
+        JsonRpc.build_jsonrpc_error(code, message, id, data)
+
+      {:error, reason} ->
+        Logger.error("Batch request processing error: #{inspect(reason)}")
+        JsonRpc.internal_error(id, inspect(reason))
+    end
+  end
+
+  defp maybe_send_parse_error(json_string, state) do
+    # Try to extract ID from malformed JSON for error response
+    case Regex.run(~r/"id"\s*:\s*(\d+|"[^"]*")/, json_string) do
+      [_, id_str] ->
+        id = case Integer.parse(id_str) do
+          {int_id, ""} -> int_id
+          _ -> String.trim(id_str, "\"")
+        end
+        error_response = JsonRpc.parse_error(id)
+        case JsonRpc.encode_jsonrpc_message(error_response) do
+          {:ok, json} -> send(state.transport, {:send, json})
+          {:error, _} -> :ok # Can't send anything
+        end
+      _ ->
+        # No ID found, send error without ID
+        error_response = JsonRpc.parse_error(nil)
+        case JsonRpc.encode_jsonrpc_message(error_response) do
+          {:ok, json} -> send(state.transport, {:send, json})
+          {:error, _} -> :ok # Can't send anything
+        end
+    end
   end
 
   # Handler implementations
@@ -260,12 +420,18 @@ defmodule VsmMcp.MCP.Protocol.Handler do
         {:error, {Messages.error_code(:tool_not_found), "Tool not found", %{tool: name}}}
 
       handler ->
-        case handler.execute(arguments) do
-          {:ok, result} ->
-            {:ok, %{content: [%{type: "text", text: result}]}}
+        try do
+          case handler.execute(arguments) do
+            {:ok, result} ->
+              {:ok, %{content: [%{type: "text", text: result}]}}
 
-          {:error, reason} ->
-            {:error, {-32603, "Tool execution failed", %{reason: inspect(reason)}}}
+            {:error, reason} ->
+              {:error, {-32603, "Tool execution failed", %{reason: inspect(reason)}}}
+          end
+        rescue
+          error ->
+            Logger.error("Tool execution exception: #{inspect(error)}")
+            {:error, {-32603, "Tool execution exception", %{error: inspect(error)}}}
         end
     end
   end
@@ -292,20 +458,26 @@ defmodule VsmMcp.MCP.Protocol.Handler do
         {:error, {Messages.error_code(:resource_not_found), "Resource not found", %{uri: uri}}}
 
       handler ->
-        case handler.read() do
-          {:ok, content} ->
-            {:ok, %{
-              contents: [
-                %{
-                  uri: uri,
-                  mimeType: handler.mime_type,
-                  text: content
-                }
-              ]
-            }}
+        try do
+          case handler.read() do
+            {:ok, content} ->
+              {:ok, %{
+                contents: [
+                  %{
+                    uri: uri,
+                    mimeType: handler.mime_type,
+                    text: content
+                  }
+                ]
+              }}
 
-          {:error, reason} ->
-            {:error, {-32603, "Resource read failed", %{reason: inspect(reason)}}}
+            {:error, reason} ->
+              {:error, {-32603, "Resource read failed", %{reason: inspect(reason)}}}
+          end
+        rescue
+          error ->
+            Logger.error("Resource read exception: #{inspect(error)}")
+            {:error, {-32603, "Resource read exception", %{error: inspect(error)}}}
         end
     end
   end

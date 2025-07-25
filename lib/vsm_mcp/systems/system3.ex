@@ -30,6 +30,18 @@ defmodule VsmMcp.Systems.System3 do
     GenServer.call(__MODULE__, :metrics)
   end
 
+  def get_status do
+    GenServer.call(__MODULE__, :status)
+  end
+
+  def audit_all do
+    GenServer.call(__MODULE__, :audit_all)
+  end
+
+  def coordinate_operations(operations) do
+    GenServer.call(__MODULE__, {:coordinate_operations, operations})
+  end
+
   def enforce_policy(policy) do
     GenServer.call(__MODULE__, {:enforce_policy, policy})
   end
@@ -104,6 +116,59 @@ defmodule VsmMcp.Systems.System3 do
     }
     
     {:reply, metrics, state}
+  end
+
+  @impl true
+  def handle_call(:status, _from, state) do
+    status = %{
+      active: true,
+      audits_performed: map_size(state.audit_results),
+      policies_enforced: map_size(state.operational_policies),
+      optimizations_count: length(state.optimization_history),
+      targets_set: map_size(state.performance_targets),
+      last_audit: get_last_audit_time(state.audit_results),
+      resource_efficiency: calculate_resource_efficiency(state),
+      operational_health: calculate_operational_health(state),
+      control_effectiveness: calculate_control_effectiveness(state)
+    }
+    
+    {:reply, status, state}
+  end
+
+  @impl true
+  def handle_call(:audit_all, _from, state) do
+    # Get all registered units from System2
+    all_units = get_all_registered_units()
+    
+    # Perform audit on all units
+    audit_results = Enum.map(all_units, fn unit_id ->
+      {unit_id, perform_audit(unit_id, state)}
+    end)
+    |> Map.new()
+    
+    # Update state with all audit results
+    new_audit_results = Map.merge(state.audit_results, 
+      Map.new(audit_results, fn {unit_id, result} ->
+        {unit_id, %{result: result, timestamp: DateTime.utc_now()}}
+      end))
+    
+    new_state = Map.put(state, :audit_results, new_audit_results)
+    
+    {:reply, {:ok, audit_results}, new_state}
+  end
+
+  @impl true
+  def handle_call({:coordinate_operations, operations}, _from, state) do
+    # Analyze and coordinate operations based on policies and targets
+    coordination_plan = create_operational_coordination(operations, state)
+    
+    # Apply optimizations
+    optimized_operations = apply_operational_optimizations(operations, coordination_plan, state)
+    
+    # Store coordination history
+    new_state = update_coordination_history(state, coordination_plan)
+    
+    {:reply, {:ok, optimized_operations}, new_state}
   end
 
   @impl true
@@ -219,7 +284,7 @@ defmodule VsmMcp.Systems.System3 do
     end)
   end
 
-  defp identify_process_improvements(state) do
+  defp identify_process_improvements(_state) do
     [
       "Implement caching for frequent operations",
       "Parallelize independent tasks",
@@ -259,10 +324,12 @@ defmodule VsmMcp.Systems.System3 do
     %{
       "security" => %{
         id: "security",
+        scope: :all,
         rules: ["encrypt_data", "validate_input", "audit_access"]
       },
       "performance" => %{
         id: "performance",
+        scope: :operational,
         rules: ["cache_results", "batch_operations", "limit_concurrency"]
       }
     }
@@ -278,5 +345,227 @@ defmodule VsmMcp.Systems.System3 do
       },
       %{system: 3}
     )
+  end
+
+  defp get_last_audit_time(audit_results) do
+    if map_size(audit_results) > 0 do
+      audit_results
+      |> Map.values()
+      |> Enum.map(& &1.timestamp)
+      |> Enum.max(DateTime)
+    else
+      nil
+    end
+  end
+
+  defp calculate_operational_health(state) do
+    # Composite health score based on multiple factors
+    policy_score = min(map_size(state.operational_policies) / 5, 1.0) * 0.3
+    audit_score = calculate_audit_health(state.audit_results) * 0.3
+    optimization_score = calculate_optimization_effectiveness(state.optimization_history) * 0.2
+    target_score = calculate_target_achievement(state) * 0.2
+    
+    policy_score + audit_score + optimization_score + target_score
+  end
+
+  defp calculate_audit_health(audit_results) do
+    if map_size(audit_results) == 0 do
+      0.5
+    else
+      recent_audits = audit_results
+      |> Map.values()
+      |> Enum.filter(fn audit ->
+        DateTime.diff(DateTime.utc_now(), audit.timestamp, :hour) < 24
+      end)
+      
+      if length(recent_audits) > 0 do
+        avg_performance = recent_audits
+        |> Enum.map(& &1.result.performance)
+        |> Enum.sum()
+        |> Kernel./(length(recent_audits))
+        
+        avg_performance
+      else
+        0.7
+      end
+    end
+  end
+
+  defp calculate_optimization_effectiveness(optimization_history) do
+    recent_optimizations = Enum.take(optimization_history, 10)
+    
+    if length(recent_optimizations) > 0 do
+      avg_improvement = recent_optimizations
+      |> Enum.map(& &1.optimization.estimated_improvement)
+      |> Enum.sum()
+      |> Kernel./(length(recent_optimizations))
+      
+      avg_improvement
+    else
+      0.5
+    end
+  end
+
+  defp get_all_registered_units do
+    # Query System2 for registered units
+    try do
+      status = GenServer.call(VsmMcp.Systems.System2, :status, 5000)
+      status.registered_units
+    rescue
+      _ -> []
+    end
+  end
+
+  defp create_operational_coordination(operations, state) do
+    %{
+      operations: operations,
+      applied_policies: find_applicable_policies(operations, state.operational_policies),
+      resource_allocation: allocate_operational_resources(operations, state),
+      optimization_strategy: determine_optimization_strategy(operations),
+      priority_order: prioritize_operations(operations, state.performance_targets),
+      coordination_timestamp: DateTime.utc_now()
+    }
+  end
+
+  defp apply_operational_optimizations(operations, coordination_plan, _state) do
+    operations
+    |> apply_resource_optimizations(coordination_plan.resource_allocation)
+    |> apply_policy_constraints(coordination_plan.applied_policies)
+    |> reorder_by_priority(coordination_plan.priority_order)
+    |> batch_similar_operations()
+  end
+
+  defp update_coordination_history(state, coordination_plan) do
+    Map.update(state, :coordination_history, [coordination_plan], fn history ->
+      [coordination_plan | Enum.take(history, 99)]
+    end)
+  end
+
+  defp find_applicable_policies(operations, policies) do
+    policies
+    |> Map.values()
+    |> Enum.filter(fn policy ->
+      Enum.any?(operations, fn op ->
+        operation_matches_policy?(op, policy)
+      end)
+    end)
+  end
+
+  defp allocate_operational_resources(operations, state) do
+    total_operations = length(operations)
+    available_resources = Map.get(state, :available_resources, %{cpu: 100, memory: 100})
+    
+    %{
+      per_operation: %{
+        cpu: available_resources.cpu / max(total_operations, 1),
+        memory: available_resources.memory / max(total_operations, 1)
+      },
+      total_allocated: available_resources,
+      allocation_strategy: :proportional
+    }
+  end
+
+  defp determine_optimization_strategy(operations) do
+    operation_types = operations
+    |> Enum.map(& &1[:type])
+    |> Enum.uniq()
+    |> length()
+    
+    cond do
+      operation_types == 1 -> :specialized
+      operation_types <= 3 -> :grouped
+      true -> :general
+    end
+  end
+
+  defp prioritize_operations(operations, targets) do
+    operations
+    |> Enum.map(fn op ->
+      priority_score = calculate_operation_priority(op, targets)
+      {priority_score, op}
+    end)
+    |> Enum.sort_by(&elem(&1, 0), :desc)
+    |> Enum.map(&elem(&1, 1))
+  end
+
+  defp operation_matches_policy?(operation, policy) do
+    policy.scope == :all or 
+    (Map.get(operation, :type) == policy.scope) or
+    (Map.get(operation, :category) in Map.get(policy, :categories, []))
+  end
+
+  defp apply_resource_optimizations(operations, allocation) do
+    Enum.map(operations, fn op ->
+      Map.put(op, :allocated_resources, allocation.per_operation)
+    end)
+  end
+
+  defp apply_policy_constraints(operations, policies) do
+    Enum.map(operations, fn op ->
+      constraints = gather_constraints_for_operation(op, policies)
+      Map.put(op, :constraints, constraints)
+    end)
+  end
+
+  defp reorder_by_priority(operations, priority_order) do
+    # If priority_order is already the operations in order, return it
+    if length(priority_order) == length(operations) do
+      priority_order
+    else
+      operations
+    end
+  end
+
+  defp batch_similar_operations(operations) do
+    operations
+    |> Enum.group_by(& &1[:type])
+    |> Map.values()
+    |> List.flatten()
+  end
+
+  defp calculate_operation_priority(operation, targets) do
+    base_priority = Map.get(operation, :priority, 0.5)
+    target_alignment = calculate_target_alignment(operation, targets)
+    
+    base_priority * 0.7 + target_alignment * 0.3
+  end
+
+  defp gather_constraints_for_operation(operation, policies) do
+    policies
+    |> Enum.flat_map(fn policy ->
+      if operation_matches_policy?(operation, policy) do
+        Map.get(policy, :rules, [])
+      else
+        []
+      end
+    end)
+    |> Enum.uniq()
+  end
+
+  defp calculate_target_alignment(operation, targets) do
+    relevant_metrics = Map.get(operation, :impacts, [])
+    
+    if Enum.empty?(relevant_metrics) do
+      0.5
+    else
+      aligned_metrics = Enum.count(relevant_metrics, fn metric ->
+        Map.has_key?(targets, metric)
+      end)
+      
+      aligned_metrics / length(relevant_metrics)
+    end
+  end
+  
+  defp calculate_control_effectiveness(state) do
+    # Calculate effectiveness as percentage
+    factors = [
+      if(map_size(state.operational_policies) > 0, do: 1, else: 0),
+      if(map_size(state.performance_targets) > 0, do: 1, else: 0),
+      if(length(state.optimization_history) > 0, do: 1, else: 0),
+      calculate_operational_health(state)
+    ]
+    
+    effectiveness = Enum.sum(factors) / length(factors) * 100
+    round(effectiveness)
   end
 end

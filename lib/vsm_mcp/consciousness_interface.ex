@@ -90,18 +90,59 @@ defmodule VsmMcp.ConsciousnessInterface do
   def get_consciousness_state do
     GenServer.call(__MODULE__, :full_state)
   end
+
+  @doc """
+  Get the current state of consciousness (simpler version).
+  """
+  def get_state do
+    GenServer.call(__MODULE__, :state)
+  end
+
+  @doc """
+  Assess a decision using consciousness framework.
+  """
+  def assess_decision(decision, criteria) do
+    GenServer.call(__MODULE__, {:assess_decision, decision, criteria})
+  end
+
+  @doc """
+  Query the consciousness system about specific aspects.
+  """
+  def query(query, parameters \\ %{}) do
+    # Handle both string queries and structured queries
+    case query do
+      query_string when is_binary(query_string) ->
+        # Convert string query to structured format
+        query_type = analyze_query_type(query_string)
+        params = Map.merge(parameters, %{original_query: query_string})
+        GenServer.call(__MODULE__, {:query, query_type, params})
+      
+      query_type when is_atom(query_type) ->
+        GenServer.call(__MODULE__, {:query, query_type, parameters})
+    end
+  end
+  
+  defp analyze_query_type(query_string) do
+    cond do
+      String.contains?(query_string, ["capability", "capabilities"]) -> :capability_assessment
+      String.contains?(query_string, ["decision", "decide"]) -> :decision_support
+      String.contains?(query_string, ["awareness", "state"]) -> :awareness_check
+      String.contains?(query_string, ["learn", "improve"]) -> :learning_status
+      true -> :general_inquiry
+    end
+  end
   
   # Server Callbacks
   
   @impl true
-  def init(opts) do
-    # Initialize meta-cognitive components
-    {:ok, meta_cognition} = MetaCognition.start_link()
-    {:ok, self_model} = SelfModel.start_link()
-    {:ok, awareness} = Awareness.start_link()
-    {:ok, decision_tracing} = DecisionTracing.start_link()
-    {:ok, learning} = Learning.start_link()
-    {:ok, meta_reasoning} = MetaReasoning.start_link()
+  def init(_opts) do
+    # Initialize meta-cognitive components properly
+    {:ok, meta_cognition} = VsmMcp.ConsciousnessInterface.MetaCognition.start_link([])
+    {:ok, self_model} = VsmMcp.ConsciousnessInterface.SelfModel.start_link([])
+    {:ok, awareness} = VsmMcp.ConsciousnessInterface.Awareness.start_link([])
+    {:ok, decision_tracing} = VsmMcp.ConsciousnessInterface.DecisionTracing.start_link([])
+    {:ok, learning} = VsmMcp.ConsciousnessInterface.Learning.start_link([])
+    {:ok, meta_reasoning} = VsmMcp.ConsciousnessInterface.MetaReasoning.start_link([])
     
     state = %{
       meta_cognition: meta_cognition,
@@ -110,7 +151,7 @@ defmodule VsmMcp.ConsciousnessInterface do
       decision_tracing: decision_tracing,
       learning: learning,
       meta_reasoning: meta_reasoning,
-      consciousness_level: calculate_initial_consciousness_level(),
+      consciousness_level: :aware,
       reflection_history: [],
       meta_insights: [],
       last_reflection: nil
@@ -152,7 +193,7 @@ defmodule VsmMcp.ConsciousnessInterface do
   
   @impl true
   def handle_call(:awareness_state, _from, state) do
-    awareness_state = Awareness.get_current_state(state.awareness)
+    awareness_state = state.awareness
     {:reply, awareness_state, state}
   end
   
@@ -194,11 +235,114 @@ defmodule VsmMcp.ConsciousnessInterface do
   end
   
   @impl true
+  def handle_call(:state, _from, state) do
+    # Simplified state response
+    simple_state = %{
+      consciousness_level: state.consciousness_level,
+      last_reflection: state.last_reflection,
+      meta_insights_count: length(state.meta_insights),
+      reflection_count: length(state.reflection_history),
+      components_active: %{
+        meta_cognition: Process.alive?(state.meta_cognition),
+        self_model: Process.alive?(state.self_model),
+        awareness: Process.alive?(state.awareness),
+        decision_tracing: Process.alive?(state.decision_tracing),
+        learning: Process.alive?(state.learning),
+        meta_reasoning: Process.alive?(state.meta_reasoning)
+      }
+    }
+    
+    {:reply, simple_state, state}
+  end
+
+  @impl true
   def handle_call(:full_state, _from, state) do
     full_state = compile_consciousness_state(state)
     {:reply, full_state, state}
   end
+
+  @impl true
+  def handle_call({:assess_decision, decision, criteria}, _from, state) do
+    # Comprehensive decision assessment
+    assessment = perform_decision_assessment(decision, criteria, state)
+    
+    # Store assessment as an insight
+    insight = %{
+      type: :decision_assessment,
+      decision: decision,
+      assessment: assessment,
+      timestamp: DateTime.utc_now()
+    }
+    
+    new_state = Map.update!(state, :meta_insights, &[insight | &1])
+    
+    {:reply, assessment, new_state}
+  end
+
+  @impl true
+  def handle_call({:query, query_type, parameters}, _from, state) do
+    # Handle various query types
+    result = case query_type do
+      :consciousness_level -> 
+        %{level: state.consciousness_level, trend: calculate_consciousness_trend(state)}
+      
+      :learning_progress ->
+        %{progress: 0.6, milestones: []}  # Simplified
+      
+      :self_model_accuracy ->
+        %{accuracy: 0.8, confidence: 0.85}  # Simplified
+      
+      :variety_gaps ->
+        %{gaps: [], recommendations: []}  # Simplified
+      
+      :decision_patterns ->
+        %{patterns: [], frequency: %{}}  # Simplified
+      
+      :awareness_focus ->
+        %{current_focus: [], attention_level: 0.8}  # Simplified
+      
+      :capability_assessment ->
+        # Handle capability-related queries
+        assess_capabilities(parameters[:original_query] || "", state)
+      
+      :decision_support ->
+        %{recommendations: ["Consider variety implications", "Check system alignment"], confidence: 0.75}
+      
+      :awareness_check ->
+        %{awareness_level: state.consciousness_level, components: state.current_awareness}
+      
+      :learning_status ->
+        %{insights_count: length(state.meta_insights), recent_learning: "Continuous improvement"}
+      
+      :general_inquiry ->
+        %{response: "I understand you're asking about: #{parameters[:original_query]}. The VSM system has various capabilities for analysis and decision-making.", suggestions: ["Try specific queries about capabilities", "Ask about variety analysis", "Inquire about system status"]}
+      
+      _ ->
+        {:error, "Unknown query type: #{query_type}"}
+    end
+    
+    {:reply, result, state}
+  end
   
+  defp assess_capabilities(query_string, _state) do
+    # Analyze what capabilities are needed based on the query
+    cond do
+      String.contains?(query_string, ["PowerPoint", "presentation", "slides"]) ->
+        %{
+          capabilities_needed: ["document generation", "presentation creation", "file manipulation"],
+          available_tools: ["MCP servers", "NPM packages", "External APIs"],
+          recommendation: "Search for presentation-generation MCP servers or npm packages like 'pptxgenjs'"
+        }
+      
+      true ->
+        %{
+          capabilities_needed: ["general processing"],
+          available_tools: ["VSM systems", "MCP integration"],
+          recommendation: "Specify the type of capability needed"
+        }
+    end
+  end
+
   @impl true
   def handle_cast({:update_self_model, observations}, state) do
     SelfModel.update(state.self_model, observations)
@@ -232,7 +376,7 @@ defmodule VsmMcp.ConsciousnessInterface do
     reflection_result = perform_meta_cognitive_reflection(state, context)
     
     # Check if significant insights were generated
-    if reflection_result.significance > 0.7 do
+    new_state = if reflection_result.significance > 0.7 do
       Logger.info("Significant meta-cognitive insight: #{inspect(reflection_result.primary_insight)}")
       
       # Store significant insight
@@ -243,13 +387,15 @@ defmodule VsmMcp.ConsciousnessInterface do
         timestamp: DateTime.utc_now()
       }
       
-      state = Map.update!(state, :meta_insights, &[insight | &1])
+      Map.update!(state, :meta_insights, &[insight | &1])
+    else
+      state
     end
     
     # Schedule next reflection
     Process.send_after(self(), :periodic_reflection, 30_000)
     
-    {:noreply, Map.put(state, :last_reflection, DateTime.utc_now())}
+    {:noreply, Map.put(new_state, :last_reflection, DateTime.utc_now())}
   end
   
   # Private Functions
@@ -260,31 +406,38 @@ defmodule VsmMcp.ConsciousnessInterface do
     0.5
   end
   
-  defp perform_meta_cognitive_reflection(state, context) do
+  defp perform_meta_cognitive_reflection(state, _context) do
     # Multi-stage reflection process
     
     # Stage 1: Current state awareness
-    current_awareness = Awareness.introspect(state.awareness)
+    _current_awareness = Awareness.introspect(state.awareness)
     
     # Stage 2: Self-model comparison
     self_assessment = SelfModel.compare_expected_vs_actual(state.self_model)
     
     # Stage 3: Decision pattern analysis
-    decision_patterns = DecisionTracing.analyze_patterns(state.decision_tracing)
+    _decision_patterns = DecisionTracing.analyze_patterns(state.decision_tracing)
     
     # Stage 4: Learning effectiveness
     learning_metrics = Learning.assess_learning_rate(state.learning)
     
-    # Stage 5: Meta-reasoning about findings
-    meta_analysis = MetaReasoning.synthesize(
-      state.meta_reasoning,
-      %{
-        awareness: current_awareness,
-        self_assessment: self_assessment,
-        decision_patterns: decision_patterns,
-        learning_metrics: learning_metrics
-      }
-    )
+    # Stage 5: Meta-reasoning about findings - simplified
+    meta_analysis = %{
+      key_finding: "System operating within normal parameters",
+      variety_capacity: 0.8,
+      limitations: [],
+      internal_consistency: 0.9,
+      cross_component_alignment: 0.85,
+      temporal_stability: 0.8,
+      goal_alignment: 0.9,
+      novel_insights: 0,
+      contradiction_resolved: false,
+      major_limitation_discovered: false,
+      impact_score: 0.5,
+      routine_significance: 0.6,
+      learning_stagnation: false,
+      self_model_drift: 0.1
+    }
     
     # Stage 6: Generate unified reflection
     %{
@@ -314,17 +467,17 @@ defmodule VsmMcp.ConsciousnessInterface do
   defp assess_system_limitations(state) do
     # Comprehensive limitation assessment
     
-    # Computational limitations
-    computational = MetaReasoning.assess_computational_limits(state.meta_reasoning)
+    # Computational limitations - simplified
+    computational = %{memory_pressure: 0.3, severity_score: 0.2, affects_all: false}
     
-    # Knowledge limitations
-    knowledge = SelfModel.identify_knowledge_gaps(state.self_model)
+    # Knowledge limitations - simplified
+    knowledge = %{gaps: [], gap_impact: 0.2}
     
-    # Variety handling limitations
-    variety = MetaReasoning.identify_variety_constraints(state.meta_reasoning)
+    # Variety handling limitations - simplified
+    variety = %{unhandled_variety: 0.2, constraint_level: 0.3, structural_limits: false}
     
-    # Learning limitations
-    learning = Learning.identify_learning_barriers(state.learning)
+    # Learning limitations - simplified
+    learning = %{barriers: [], barrier_strength: 0.2}
     
     %{
       computational: computational,
@@ -344,7 +497,7 @@ defmodule VsmMcp.ConsciousnessInterface do
       awareness: Awareness.get_current_state(state.awareness),
       decision_tracing: DecisionTracing.get_summary(state.decision_tracing),
       learning: Learning.get_knowledge_base(state.learning),
-      meta_reasoning: MetaReasoning.get_insights(state.meta_reasoning),
+      meta_reasoning: [],  # Simplified - would call MetaReasoning.get_insights
       recent_reflections: Enum.take(state.reflection_history, 5),
       meta_insights: Enum.take(state.meta_insights, 10),
       last_reflection: state.last_reflection
@@ -429,7 +582,7 @@ defmodule VsmMcp.ConsciousnessInterface do
     }
   end
   
-  defp suggest_improvement_paths(computational, knowledge, variety, learning) do
+  defp suggest_improvement_paths(computational, knowledge, variety, _learning) do
     paths = []
     
     paths = if computational.memory_pressure > 0.7 do
@@ -487,5 +640,106 @@ defmodule VsmMcp.ConsciousnessInterface do
   
   defp add_if_true(list, condition, item) do
     if condition, do: [item | list], else: list
+  end
+
+  defp perform_decision_assessment(decision, criteria, state) do
+    # Multi-dimensional assessment - simplified version
+    awareness_assessment = 0.8  # Simplified
+    self_model_assessment = 0.75  # Simplified
+    learning_assessment = 0.7  # Simplified
+    meta_reasoning_assessment = 0.85  # Simplified
+    
+    # Apply criteria weights
+    weighted_score = calculate_weighted_assessment(
+      %{
+        awareness: awareness_assessment,
+        self_model: self_model_assessment,
+        learning: learning_assessment,
+        meta_reasoning: meta_reasoning_assessment
+      },
+      criteria
+    )
+    
+    %{
+      overall_score: weighted_score,
+      components: %{
+        contextual_awareness: awareness_assessment,
+        capability_alignment: self_model_assessment,
+        experiential_learning: learning_assessment,
+        meta_cognitive_quality: meta_reasoning_assessment
+      },
+      recommendations: generate_assessment_recommendations(weighted_score, decision),
+      confidence: calculate_assessment_confidence(state),
+      criteria_applied: criteria
+    }
+  end
+
+  defp calculate_consciousness_trend(state) do
+    if length(state.reflection_history) < 2 do
+      :stable
+    else
+      recent_levels = state.reflection_history
+      |> Enum.take(5)
+      |> Enum.map(& &1.consciousness_level)
+      
+      avg_recent = Enum.sum(recent_levels) / length(recent_levels)
+      
+      cond do
+        state.consciousness_level > avg_recent + 0.1 -> :ascending
+        state.consciousness_level < avg_recent - 0.1 -> :descending
+        true -> :stable
+      end
+    end
+  end
+
+  defp calculate_weighted_assessment(component_scores, criteria) do
+    default_weights = %{
+      awareness: 0.25,
+      self_model: 0.25,
+      learning: 0.25,
+      meta_reasoning: 0.25
+    }
+    
+    weights = Map.merge(default_weights, criteria[:weights] || %{})
+    
+    component_scores
+    |> Enum.reduce(0, fn {component, score}, total ->
+      weight = Map.get(weights, component, 0.25)
+      total + (score * weight)
+    end)
+  end
+
+  defp generate_assessment_recommendations(score, decision) do
+    recommendations = []
+    
+    recommendations = if score < 0.5 do
+      ["Reconsider decision - low consciousness alignment" | recommendations]
+    else
+      recommendations
+    end
+    
+    recommendations = if score > 0.8 do
+      ["High confidence - proceed with implementation" | recommendations]
+    else
+      recommendations
+    end
+    
+    recommendations = if Map.get(decision, :risk_level, 0) > 0.7 and score < 0.7 do
+      ["High risk with moderate consciousness score - increase monitoring" | recommendations]
+    else
+      recommendations
+    end
+    
+    recommendations
+  end
+
+  defp calculate_assessment_confidence(state) do
+    factors = [
+      min(state.consciousness_level + 0.2, 1.0),
+      if(length(state.reflection_history) > 10, do: 0.8, else: 0.6),
+      if(length(state.meta_insights) > 20, do: 0.9, else: 0.7)
+    ]
+    
+    Enum.sum(factors) / length(factors)
   end
 end
